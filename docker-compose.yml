@@ -25,7 +25,12 @@ services:
       POSTGRES_DB: novabank
 
     ports:
-      - "5432:5432"             # expose Postgres au backend lancé hors Docker (dev)
+      # Port HÔTE 5433 -> port CONTENEUR 5432. On ne publie pas sur 5432
+      # car une installation PostgreSQL native sur la machine d'un membre
+      # de l'équipe (service Windows/Linux) occuperait déjà ce port : le
+      # backend se connecterait alors au MAUVAIS serveur avec une erreur
+      # d'authentification incompréhensible (cas vécu sur ce projet).
+      - "5433:5432"
 
     volumes:
       # Volume nommé : les données survivent à la destruction du conteneur.
