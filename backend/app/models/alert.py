@@ -48,6 +48,15 @@ class Alert(Base):
 
     transaction_id: Mapped[int | None] = mapped_column(ForeignKey("transactions.id"))
 
+    # BOUCLE DE FEEDBACK (cœur de la version PFE) : en clôturant, le
+    # directeur qualifie l'alerte. Ces qualifications sont les ÉTIQUETTES
+    # d'entraînement du modèle ML — le système apprend des décisions
+    # humaines de l'agence (human-in-the-loop), là où les solutions
+    # commerciales exigent des données étiquetées externes.
+    resolution: Mapped[str | None] = mapped_column(
+        Enum("confirmed_fraud", "false_positive", name="alert_resolution")
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

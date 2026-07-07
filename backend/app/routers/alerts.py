@@ -64,14 +64,24 @@ def update_alert_status(
             detail="Une alerte clôturée ne peut plus être modifiée",
         )
 
+    # Clôturer une alerte transactionnelle EXIGE une qualification : c'est
+    # elle qui alimente le réentraînement du modèle (boucle de feedback).
+    if data.status == "closed" and alert.alert_type == "transaction_risk" and not data.resolution:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La clôture exige une qualification : confirmed_fraud ou false_positive",
+        )
+
     alert.status = data.status
     if data.status == "closed":
         alert.closed_at = datetime.now(timezone.utc)
+        alert.resolution = data.resolution
 
     audit_service.log_action(
         db, "alert_status_changed", user_id=director.id, entity_type="alert",
         entity_id=alert.id, ip_address=request.client.host if request.client else None,
-        details=f"nouveau statut : {data.status}",
+        details=f"nouveau statut : {data.status}"
+        + (f", qualification : {data.resolution}" if data.resolution else ""),
     )
     db.commit()
     db.refresh(alert)

@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     # Seuil de score (0-100) au-delà duquel une alerte est créée.
     risk_alert_threshold: int = 70
 
+    # Artefact du modèle ML entraîné (scripts/train_model.py). S'il est
+    # absent, le scoring se replie automatiquement sur le moteur de règles.
+    ml_model_path: str = "ml_artifacts/model.joblib"
+
     # Pas de valeur par défaut = variable OBLIGATOIRE : impossible de
     # démarrer l'API sans savoir où est la base.
     database_url: str

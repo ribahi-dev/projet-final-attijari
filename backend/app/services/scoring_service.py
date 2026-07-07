@@ -1,27 +1,28 @@
-"""Moteur de scoring de risque — version 1 : règles métier (mvp-rules-v1).
+"""Moteur de scoring de risque — double moteur derrière une interface unique.
 
-Stratégie du plan directeur : une BASELINE de règles interprétables branchée
-dès maintenant, que le modèle ML (Phase C) remplacera derrière la même
-interface. Le contrat ne change pas : score 0-100 + confiance + explication
-lisible (CdC §9.1/9.2).
+    extract_features (app/ml/features.py — code partagé train/inférence)
+            │
+            ├── modèle ML (RandomForest) si un artefact entraîné existe
+            │        -> model_version = "ml-rf-v2.0"
+            └── sinon moteur de RÈGLES pondérées (baseline)
+                     -> model_version = "mvp-rules-v1"
 
-Facteurs évalués (chacun contribue au score et à l'explication) :
-  - montant vs revenu mensuel du client (ou vs historique du compte) ;
-  - heure inhabituelle (00h-06h) ;
-  - changement de ville par rapport à l'opération précédente ;
-  - fréquence anormale sur 24h.
+Dans les deux cas la sortie respecte le contrat du CdC §9.2 : score 0-100,
+niveau de confiance, EXPLICATION lisible par un directeur d'agence.
+La baseline n'est pas jetée quand le ML arrive : elle sert de comparaison
+chiffrée (voir scripts/train_model.py) et de secours opérationnel.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.ml import model as ml_model
+from app.ml.features import TransactionFeatures, explain_features, extract_features
 from app.models import Account, RiskScore, Transaction
 
-MODEL_VERSION = "mvp-rules-v1"
+RULES_VERSION = "mvp-rules-v1"
 
 
 @dataclass
@@ -29,85 +30,51 @@ class ScoringResult:
     score: int
     confidence_level: str
     explanation: str
+    model_version: str
 
 
-def _amount_factor(db: Session, account: Account, amount: Decimal) -> tuple[int, str | None]:
-    income = account.client.monthly_income if account.client else None
-    if income and income > 0:
-        ratio = float(amount / income)
-        if ratio >= 2:
-            return 45, f"montant {ratio:.1f}x supérieur au revenu mensuel du client"
-        if ratio >= 1:
-            return 30, f"montant équivalent à {ratio:.1f}x le revenu mensuel du client"
-        if ratio >= 0.5:
-            return 12, "montant représentant plus de la moitié du revenu mensuel"
-        return 0, None
-
-    # Pas de revenu connu : comparaison à la moyenne historique du compte.
-    avg = db.scalar(
-        select(func.avg(Transaction.amount)).where(Transaction.account_id == account.id)
-    )
-    if avg and avg > 0:
-        ratio = float(amount / avg)
-        if ratio >= 5:
-            return 40, f"montant {ratio:.1f}x supérieur à la moyenne du compte"
-        if ratio >= 3:
-            return 25, f"montant {ratio:.1f}x supérieur à la moyenne du compte"
-    return 0, None
-
-
-def _hour_factor(moment: datetime) -> tuple[int, str | None]:
-    if 0 <= moment.hour < 6:
-        return 25, f"opération à {moment.strftime('%Hh%M')}, hors des horaires habituels"
-    return 0, None
-
-
-def _city_factor(db: Session, account: Account, city: str | None) -> tuple[int, str | None]:
-    if not city:
-        return 0, None
-    last_city = db.scalar(
-        select(Transaction.city)
-        .where(Transaction.account_id == account.id, Transaction.city.is_not(None))
-        .order_by(Transaction.created_at.desc())
-        .limit(1)
-    )
-    if last_city and last_city.strip().lower() != city.strip().lower():
-        return 20, f"ville inhabituelle ({city}, précédente : {last_city})"
-    return 0, None
-
-
-def _frequency_factor(db: Session, account: Account) -> tuple[int, str | None]:
-    since = datetime.now(timezone.utc) - timedelta(hours=24)
-    count = db.scalar(
-        select(func.count())
-        .select_from(Transaction)
-        .where(Transaction.account_id == account.id, Transaction.created_at >= since)
-    )
-    if count and count >= 5:
-        return 15, f"{count} opérations sur les dernières 24h"
-    return 0, None
+def _rules_score(f: TransactionFeatures) -> int:
+    """Baseline : somme pondérée des signaux (poids validés en Phase B)."""
+    score = 0
+    if f.amount_over_income >= 2:
+        score += 45
+    elif f.amount_over_income >= 1:
+        score += 30
+    elif f.amount_over_income >= 0.5:
+        score += 12
+    elif f.amount_over_avg >= 5:
+        score += 40
+    elif f.amount_over_avg >= 3:
+        score += 25
+    if f.is_night:
+        score += 25
+    if f.city_changed:
+        score += 20
+    if f.tx_last_24h >= 5:
+        score += 15
+    return min(100, score)
 
 
 def score_transaction(db: Session, account: Account, amount: Decimal, city: str | None) -> ScoringResult:
-    """Évalue le risque AVANT insertion de la transaction (l'historique
-    interrogé ne contient donc pas l'opération en cours d'analyse)."""
-    factors = [
-        _amount_factor(db, account, amount),
-        _hour_factor(datetime.now()),
-        _city_factor(db, account, city),
-        _frequency_factor(db, account),
-    ]
-    score = min(100, sum(points for points, _ in factors))
-    reasons = [reason for _, reason in factors if reason]
+    features = extract_features(db, account, amount, city)
+    reasons = explain_features(features)
 
-    triggered = len(reasons)
-    confidence = "élevé" if triggered >= 2 else "moyen" if triggered == 1 else "faible"
+    if ml_model.is_available():
+        score = ml_model.predict_score(features)
+        version = ml_model.version() or "ml-unknown"
+    else:
+        score = _rules_score(features)
+        version = RULES_VERSION
+
+    confidence = "élevé" if len(reasons) >= 2 else "moyen" if len(reasons) == 1 else "faible"
     explanation = (
         "Transaction sans signal de risque particulier."
         if not reasons
         else "Signaux détectés : " + " ; ".join(reasons) + "."
     )
-    return ScoringResult(score=score, confidence_level=confidence, explanation=explanation)
+    return ScoringResult(
+        score=score, confidence_level=confidence, explanation=explanation, model_version=version
+    )
 
 
 def persist_score(db: Session, transaction: Transaction, result: ScoringResult) -> RiskScore:
@@ -116,7 +83,7 @@ def persist_score(db: Session, transaction: Transaction, result: ScoringResult) 
         score=result.score,
         confidence_level=result.confidence_level,
         explanation=result.explanation,
-        model_version=MODEL_VERSION,
+        model_version=result.model_version,
     )
     db.add(risk)
     return risk

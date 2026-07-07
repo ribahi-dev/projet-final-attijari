@@ -16,6 +16,10 @@ import os
 os.environ.setdefault(
     "DATABASE_URL", "postgresql+psycopg://postgres:password@localhost:5433/novabank"
 )
+# Les tests standard doivent être DÉTERMINISTES : on pointe le modèle ML
+# vers un chemin inexistant pour forcer le moteur de règles. Les tests du
+# ML entraînent leur propre artefact dans un dossier temporaire.
+os.environ["ML_MODEL_PATH"] = "ml_artifacts/absent-en-test.joblib"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

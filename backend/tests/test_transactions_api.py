@@ -121,7 +121,10 @@ def test_suspicious_transaction_creates_alert(client, auth_headers, db):
     assert response.status_code == 201
     risk = response.json()["risk_score"]
     assert risk["score"] >= 70
-    assert "Tanger" in risk["explanation"]  # explication lisible (CdC §9.2)
+    # Explication lisible (CdC §9.2) : au moins deux signaux cités
+    # (montant élevé + ville inhabituelle).
+    assert "montant" in risk["explanation"].lower()
+    assert "ville inhabituelle" in risk["explanation"].lower()
 
     from app.models import Alert
 

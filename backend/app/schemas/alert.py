@@ -9,6 +9,9 @@ from app.schemas.transaction import TransactionResponse
 
 class AlertUpdate(BaseModel):
     status: str = Field(pattern="^(in_progress|closed)$")  # "open" n'est jamais re-forçable
+    # Obligatoire à la clôture d'une alerte transactionnelle (vérifié dans
+    # le router) : c'est l'étiquette qui nourrit le réentraînement du modèle.
+    resolution: str | None = Field(default=None, pattern="^(confirmed_fraud|false_positive)$")
 
 
 class AlertResponse(BaseModel):
@@ -17,6 +20,7 @@ class AlertResponse(BaseModel):
     level: str
     message: str
     status: str
+    resolution: str | None
     transaction_id: int | None
     created_at: datetime
     closed_at: datetime | None

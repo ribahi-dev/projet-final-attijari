@@ -42,9 +42,18 @@ def test_director_alert_lifecycle(client, auth_headers):
     taken = client.patch(f"/alerts/{alert['id']}", headers=director, json={"status": "in_progress"})
     assert taken.status_code == 200
 
-    closed = client.patch(f"/alerts/{alert['id']}", headers=director, json={"status": "closed"})
+    # 2b. Clôturer une alerte transactionnelle SANS qualification est refusé
+    #     (la qualification alimente la boucle de feedback du modèle ML).
+    no_reso = client.patch(f"/alerts/{alert['id']}", headers=director, json={"status": "closed"})
+    assert no_reso.status_code == 400
+
+    closed = client.patch(
+        f"/alerts/{alert['id']}", headers=director,
+        json={"status": "closed", "resolution": "confirmed_fraud"},
+    )
     assert closed.status_code == 200
     assert closed.json()["closed_at"] is not None
+    assert closed.json()["resolution"] == "confirmed_fraud"  # étiquette d'entraînement
 
     # 3. Une alerte clôturée est immuable.
     reopen = client.patch(f"/alerts/{alert['id']}", headers=director, json={"status": "in_progress"})
