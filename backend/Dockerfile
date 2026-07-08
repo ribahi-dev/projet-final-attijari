@@ -19,6 +19,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY scripts ./scripts
 
+# Entraîne le modèle ML PENDANT la construction de l'image (version PFE).
+# L'artefact (ml_artifacts/model.joblib) est ainsi baké dans l'image : le
+# conteneur démarre vite et utilise directement le RandomForest. Le script
+# se replie sur les données simulées si la base (feedback) est inaccessible
+# au build — ce qui est le cas ici, et c'est voulu.
+RUN python -m scripts.train_model
+
 RUN useradd --create-home appuser
 USER appuser
 

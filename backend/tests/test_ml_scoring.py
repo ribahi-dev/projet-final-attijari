@@ -5,7 +5,6 @@ ML_MODEL_PATH vers un fichier absent) : ils vérifient le contrat du scoring
 et l'entraînement d'un artefact jetable dans un dossier temporaire.
 """
 
-from decimal import Decimal
 
 import joblib
 import numpy as np

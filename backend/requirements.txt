@@ -31,8 +31,9 @@ pwdlib[bcrypt]==0.3.0           # hachage bcrypt des mots de passe (passlib est 
                                 # et incompatible bcrypt>=4.1 ; bcrypt = exigence du CdC §8.4)
 python-multipart==0.0.32        # parsing des formulaires (requis par le login OAuth2 de FastAPI)
 
-# --- Data & IA (Modules 6, 7 et 10 du cahier des charges) ---
-# Installées et épinglées en Phase C du plan directeur (module IA/analytics/
-# rapports) : on n'alourdit pas l'installation ni la CI avec des paquets
-# que le code n'utilise pas encore.
-# pandas / numpy / scikit-learn / reportlab / openpyxl
+# --- Intelligence Artificielle (Module 7 — version PFE) ---
+# Le moteur de scoring peut utiliser un modèle entraîné (RandomForest).
+# scikit-learn tire numpy et scipy ; joblib sérialise/charge l'artefact.
+numpy==2.5.1                    # calcul vectoriel (features, entraînement)
+scikit-learn==1.9.0             # RandomForest + IsolationForest + métriques
+joblib==1.5.3                   # sauvegarde/chargement du modèle entraîné
