@@ -15,7 +15,10 @@ import { ROLE_LABEL } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { fmtDate } from "@/lib/format";
 
-const EMPTY = { first_name: "", last_name: "", email: "", password: "", role: "advisor" };
+const EMPTY = {
+  first_name: "", last_name: "", email: "", password: "", role: "advisor",
+  phone: "", telegram_chat_id: "",
+};
 
 export default function Users() {
   const { toast } = useToast();
@@ -38,7 +41,9 @@ export default function Users() {
     e.preventDefault();
     setError("");
     try {
-      await api.post("/users", form);
+      // On n'envoie pas les champs contact vides (null plutôt que "").
+      const payload = Object.fromEntries(Object.entries(form).filter(([, v]) => v !== ""));
+      await api.post("/users", payload);
       toast("success", `Utilisateur ${form.email} créé.`);
       setForm(EMPTY);
       setOpen(false);
@@ -113,7 +118,17 @@ export default function Users() {
               <option value="admin">Administrateur</option>
             </Select>
           </Field>
-          <div className="flex items-end justify-end gap-2">
+          <Field label="Téléphone"><Input value={form.phone} onChange={set("phone")} placeholder="+212 6 12 34 56 78" /></Field>
+          <div className="sm:col-span-2">
+            <Field label="Telegram chat ID (notifications)">
+              <Input value={form.telegram_chat_id} onChange={set("telegram_chat_id")} placeholder="ex. 123456789" />
+            </Field>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Pour recevoir les alertes de fraude sur Telegram. Le directeur obtient son
+              identifiant via le bot @userinfobot.
+            </p>
+          </div>
+          <div className="sm:col-span-2 flex items-end justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setOpen(false)}>Annuler</Button>
             <Button type="submit">Créer</Button>
           </div>

@@ -5,6 +5,9 @@ Documentation interactive : /docs (Swagger) et /redoc.
 Lancement dev : uvicorn app.main:app --reload
 """
 
+import logging
+import sys
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -12,6 +15,18 @@ from app.core.config import settings
 from app.routers import (
     accounts, alerts, analytics, audit, auth, clients, reports, transactions, users,
 )
+
+# Logging applicatif : on garantit que les logs "novabank.*" (notamment les
+# notifications) apparaissent sur la sortie standard — donc dans `docker logs`.
+# Sans cette config, les messages INFO de nos loggers seraient filtrés par la
+# configuration par défaut d'uvicorn.
+_app_logger = logging.getLogger("novabank")
+if not _app_logger.handlers:
+    _handler = logging.StreamHandler(sys.stdout)
+    _handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+    _app_logger.addHandler(_handler)
+    _app_logger.setLevel(logging.INFO)
+    _app_logger.propagate = False
 
 app = FastAPI(
     title=settings.app_name,

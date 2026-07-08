@@ -36,6 +36,8 @@ def create_user(
         email=data.email,
         password_hash=hash_password(data.password),  # le mot de passe meurt ici
         role=data.role,
+        phone=data.phone,
+        telegram_chat_id=data.telegram_chat_id,
     )
     db.add(user)
     db.flush()

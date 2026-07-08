@@ -57,6 +57,9 @@ def seed():
             user = User(
                 first_name=first, last_name=last, email=email,
                 password_hash=hash_password(password), role=role,
+                # Le directeur a un téléphone (démo des notifications) ;
+                # son Telegram chat_id se renseigne ensuite dans l'interface.
+                phone="+212 6 61 00 00 00" if role == "director" else None,
             )
             db.add(user)
             users[role] = user

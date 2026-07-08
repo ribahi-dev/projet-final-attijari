@@ -17,6 +17,9 @@ class UserCreate(BaseModel):
     # immédiatement, jamais stocké ni renvoyé.
     password: str = Field(min_length=8, max_length=128)
     role: str = Field(pattern="^(admin|director|advisor)$", default="advisor")
+    # Contacts optionnels pour les notifications (utile surtout au directeur).
+    phone: str | None = Field(default=None, max_length=30)
+    telegram_chat_id: str | None = Field(default=None, max_length=50)
 
 
 class UserUpdate(BaseModel):
@@ -24,6 +27,8 @@ class UserUpdate(BaseModel):
     last_name: str | None = Field(default=None, min_length=1, max_length=100)
     role: str | None = Field(default=None, pattern="^(admin|director|advisor)$")
     is_active: bool | None = None
+    phone: str | None = Field(default=None, max_length=30)
+    telegram_chat_id: str | None = Field(default=None, max_length=50)
 
 
 class UserResponse(BaseModel):
@@ -33,6 +38,8 @@ class UserResponse(BaseModel):
     email: str
     role: str
     is_active: bool
+    phone: str | None
+    telegram_chat_id: str | None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

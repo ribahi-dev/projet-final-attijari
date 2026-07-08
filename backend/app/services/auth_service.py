@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models import Alert, User
 from app.core.security import verify_password
-from app.services import audit_service
+from app.services import audit_service, notification_service
 
 
 class AuthenticationError(Exception):
@@ -59,25 +59,26 @@ def authenticate(db: Session, email: str, password: str, ip_address: str | None 
     if not user.is_active or not verify_password(password, user.password_hash):
         user.failed_login_attempts += 1
         details = f"échec n°{user.failed_login_attempts}"
+        lock_message: str | None = None
         if user.failed_login_attempts >= settings.max_failed_login_attempts:
             user.locked_until = now + timedelta(minutes=settings.lockout_minutes)
             user.failed_login_attempts = 0
             details += f" -> verrouillage {settings.lockout_minutes} min"
-            db.add(
-                Alert(
-                    alert_type="login_security",
-                    level="high",
-                    message=(
-                        f"Compte {user.email} verrouillé après échecs de connexion "
-                        f"répétés (IP : {ip_address or 'inconnue'})"
-                    ),
-                )
+            lock_message = (
+                f"Compte {user.email} verrouillé après échecs de connexion "
+                f"répétés (IP : {ip_address or 'inconnue'})"
             )
+            db.add(Alert(alert_type="login_security", level="high", message=lock_message))
         audit_service.log_action(
             db, "login_failed", user_id=user.id, ip_address=ip_address,
             success=False, details=details,
         )
         db.commit()
+        # Notification non bloquante APRÈS commit (alerte déjà persistée).
+        if lock_message is not None:
+            notification_service.notify_directors(
+                db, subject="🔒 Verrouillage de compte (sécurité)", message=lock_message
+            )
         raise AuthenticationError(GENERIC_MESSAGE)
 
     # Succès : remise à zéro du compteur d'échecs.

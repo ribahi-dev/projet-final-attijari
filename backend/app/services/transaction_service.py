@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models import Account, Alert, Transaction, User
 from app.schemas.transaction import TransactionCreate
-from app.services import audit_service, scoring_service
+from app.services import audit_service, notification_service, scoring_service
 
 
 class BusinessRuleError(Exception):
@@ -84,15 +84,17 @@ def create_transaction(
 
     scoring_service.persist_score(db, transaction, result)
 
+    alert_message: str | None = None
     if result.score >= settings.risk_alert_threshold:
+        alert_message = (
+            f"Score de risque {result.score}/100 sur {data.transaction_type} "
+            f"de {amount} MAD (compte {source.account_number}). {result.explanation}"
+        )
         db.add(
             Alert(
                 alert_type="transaction_risk",
                 level="critical" if result.score >= 85 else "high",
-                message=(
-                    f"Score de risque {result.score}/100 sur {data.transaction_type} "
-                    f"de {amount} MAD (compte {source.account_number}). {result.explanation}"
-                ),
+                message=alert_message,
                 transaction_id=transaction.id,
             )
         )
@@ -109,4 +111,12 @@ def create_transaction(
 
     db.commit()
     db.refresh(transaction)
+
+    # APRÈS le commit (donc l'alerte est déjà persistée en sécurité), on
+    # prévient le directeur — de façon non bloquante et jamais fatale.
+    if alert_message is not None:
+        notification_service.notify_directors(
+            db, subject="🚨 Transaction à risque détectée", message=alert_message
+        )
+
     return transaction

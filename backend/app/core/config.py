@@ -44,6 +44,19 @@ class Settings(BaseSettings):
     # absent, le scoring se replie automatiquement sur le moteur de règles.
     ml_model_path: str = "ml_artifacts/model.joblib"
 
+    # --- Notifications (Telegram + email) ---
+    # Défauts VIDES : sans configuration, les notifications sont simplement
+    # journalisées (la démo fonctionne). Renseigner ces valeurs dans .env
+    # pour activer l'envoi réel.
+    notifications_enabled: bool = True
+    telegram_bot_token: str = ""     # obtenu via @BotFather sur Telegram
+    telegram_chat_id: str = ""       # canal agence par défaut (id de chat)
+    smtp_host: str = ""              # ex. smtp.gmail.com ; vide = email désactivé
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""              # adresse d'expéditeur (défaut : smtp_user)
+
     # Pas de valeur par défaut = variable OBLIGATOIRE : impossible de
     # démarrer l'API sans savoir où est la base.
     database_url: str

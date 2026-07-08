@@ -49,6 +49,12 @@ class User(Base):
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # Contacts pour les notifications (surtout le directeur d'agence) :
+    # une transaction à risque ou un verrouillage de compte lui est notifié
+    # par email et/ou Telegram. Nullable : tous les rôles n'ont pas de canal.
+    phone: Mapped[str | None] = mapped_column(String(30))
+    telegram_chat_id: Mapped[str | None] = mapped_column(String(50))
+
     # Anti force-brute (cahier des charges, Module 8) : on compte les échecs
     # de connexion ; au-delà du seuil, locked_until est posé et le login est
     # refusé jusqu'à cette date, même avec le bon mot de passe.
