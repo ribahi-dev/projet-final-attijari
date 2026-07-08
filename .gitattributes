@@ -1,0 +1,14 @@
+# Normalisation des fins de ligne — garantit que chaque fichier a le bon
+# format quel que soit le système (Windows/Mac/Linux), y compris dans le
+# ZIP téléchargé depuis GitHub.
+
+# Par défaut : git gère automatiquement les fins de ligne des fichiers texte.
+* text=auto
+
+# Les scripts Windows DOIVENT être en CRLF, sinon cmd.exe les rejette
+# (fenêtre qui se ferme immédiatement au double-clic).
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Les scripts Unix DOIVENT rester en LF.
+*.sh text eol=lf
