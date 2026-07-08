@@ -5,8 +5,16 @@ et on patche `notify` / `notify_directors` pour vérifier le câblage sans
 envoyer de vrais messages.
 """
 
+import json as _json
+
 from app.services import notification_service as notif
+from tests.conftest import TEST_PASSWORD
 from tests.test_clients_api import VALID_CLIENT
+
+
+def _login(client, user):
+    login = client.post("/auth/login", data={"username": user.email, "password": TEST_PASSWORD}).json()
+    return {"Authorization": f"Bearer {login['access_token']}"}
 
 
 def test_deliver_never_raises_without_channels(monkeypatch):
@@ -94,4 +102,64 @@ def test_suspicious_transaction_triggers_notification(client, auth_headers, monk
     )
     assert resp.status_code == 201
     assert resp.json()["risk_score"]["score"] >= 70
-    assert "risque" in captured.get("subject", "").lower()  # le directeur a été notifié
+    assert "fraude" in captured.get("subject", "").lower()  # le directeur a été notifié
+    assert "Client" in captured.get("message", "")  # message enrichi (nom du client)
+
+
+def test_fetch_latest_telegram_chat_takes_most_recent(monkeypatch):
+    monkeypatch.setattr(notif.settings, "telegram_bot_token", "TOKEN")
+    payload = {
+        "ok": True,
+        "result": [
+            {"update_id": 1, "message": {"chat": {"id": 111, "first_name": "Ancien"}}},
+            {"update_id": 2, "message": {"chat": {"id": 222, "first_name": "Récent"}}},
+        ],
+    }
+
+    class FakeResp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return _json.dumps(payload).encode()
+
+    monkeypatch.setattr(notif.urllib.request, "urlopen", lambda *a, **k: FakeResp())
+    info = notif.fetch_latest_telegram_chat()
+    assert info == {"chat_id": "222", "name": "Récent"}  # le message le plus récent
+
+
+def test_link_telegram_captures_and_persists(client, make_user, monkeypatch):
+    monkeypatch.setattr(notif.settings, "telegram_bot_token", "TOKEN")
+    monkeypatch.setattr(notif, "fetch_latest_telegram_chat", lambda: {"chat_id": "42", "name": "Mehdi"})
+    user = make_user("director", email="link@novabank.ma")
+    headers = _login(client, user)
+
+    resp = client.post("/notifications/telegram/link-me", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["telegram_chat_id"] == "42"
+    # Persisté : /auth/me renvoie le chat_id enregistré.
+    assert client.get("/auth/me", headers=headers).json()["telegram_chat_id"] == "42"
+
+
+def test_link_telegram_404_when_no_message(client, make_user, monkeypatch):
+    monkeypatch.setattr(notif.settings, "telegram_bot_token", "TOKEN")
+    monkeypatch.setattr(notif, "fetch_latest_telegram_chat", lambda: None)
+    headers = _login(client, make_user("director", email="nolink@novabank.ma"))
+
+    resp = client.post("/notifications/telegram/link-me", headers=headers)
+    assert resp.status_code == 404
+
+
+def test_send_test_notification(client, make_user, monkeypatch):
+    monkeypatch.setattr(notif.settings, "telegram_bot_token", "TOKEN")
+    monkeypatch.setattr(notif.settings, "telegram_chat_id", "999")
+    sent = {}
+    monkeypatch.setattr(notif, "notify", lambda s, m, **kw: sent.update(subject=s))
+    headers = _login(client, make_user("director", email="test-notif@novabank.ma"))
+
+    resp = client.post("/notifications/test", headers=headers)
+    assert resp.status_code == 200
+    assert "Test" in sent["subject"]

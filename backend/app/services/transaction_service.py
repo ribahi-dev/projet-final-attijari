@@ -115,8 +115,21 @@ def create_transaction(
     # APRÈS le commit (donc l'alerte est déjà persistée en sécurité), on
     # prévient le directeur — de façon non bloquante et jamais fatale.
     if alert_message is not None:
-        notification_service.notify_directors(
-            db, subject="🚨 Transaction à risque détectée", message=alert_message
+        type_fr = {"deposit": "Dépôt", "withdrawal": "Retrait", "transfer": "Virement"}[
+            data.transaction_type
+        ]
+        level_emoji = "🔴" if result.score >= 85 else "🟠"
+        client = source.client
+        client_name = f"{client.first_name} {client.last_name}" if client else "—"
+        subject = f"{level_emoji} ALERTE FRAUDE — {type_fr} suspect (score {result.score}/100)"
+        body = (
+            f"👤 Client : {client_name}\n"
+            f"💳 Compte : {source.account_number}\n"
+            f"💸 {type_fr} : {amount:,.2f} MAD\n".replace(",", " ")
+            + f"📍 Ville : {data.city or '—'}\n\n"
+            f"🔎 {result.explanation}\n\n"
+            f"➡️ Ouvrez NovaBank → Détection de fraude pour traiter l'alerte."
         )
+        notification_service.notify_directors(db, subject=subject, message=body)
 
     return transaction

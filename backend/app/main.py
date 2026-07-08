@@ -13,7 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.routers import (
-    accounts, alerts, analytics, audit, auth, clients, reports, transactions, users,
+    accounts, alerts, analytics, audit, auth, clients, notifications, reports,
+    transactions, users,
 )
 
 # Logging applicatif : on garantit que les logs "novabank.*" (notamment les
@@ -53,6 +54,7 @@ app.include_router(transactions.router)
 app.include_router(alerts.router)
 app.include_router(analytics.router)
 app.include_router(reports.router)
+app.include_router(notifications.router)
 app.include_router(audit.router)
 
 

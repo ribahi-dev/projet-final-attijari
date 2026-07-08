@@ -24,6 +24,7 @@ SQLAlchemy non thread-safe) : on lui passe uniquement des chaînes déjà
 extraites (adresses, identifiants de chat, texte du message).
 """
 
+import json
 import logging
 import smtplib
 import threading
@@ -95,6 +96,36 @@ def notify(subject: str, message: str, *, email_to: str | None = None, telegram_
     threading.Thread(
         target=_deliver, args=(subject, message, email_to, telegram_chat_id), daemon=True
     ).start()
+
+
+def fetch_latest_telegram_chat() -> dict | None:
+    """Récupère le chat Telegram le plus récent ayant écrit au bot.
+
+    Sert à l'« auto-liaison » : l'utilisateur envoie /start à son bot, puis
+    l'application appelle getUpdates et capte son chat_id automatiquement —
+    plus besoin de @userinfobot ni de copier l'identifiant à la main.
+
+    Retourne {"chat_id": "...", "name": "..."} ou None (aucun message, pas
+    de token, ou erreur réseau — jamais d'exception propagée).
+    """
+    if not settings.telegram_bot_token:
+        return None
+    url = f"https://api.telegram.org/bot{settings.telegram_bot_token}/getUpdates"
+    try:
+        with urllib.request.urlopen(url, timeout=8) as resp:
+            data = json.load(resp)
+    except Exception as exc:
+        logger.warning("Telegram getUpdates échoué : %s", exc)
+        return None
+    if not data.get("ok"):
+        return None
+    for update in reversed(data.get("result", [])):
+        msg = update.get("message") or update.get("edited_message")
+        if msg and "chat" in msg:
+            chat = msg["chat"]
+            name = chat.get("first_name") or chat.get("title") or chat.get("username") or "Telegram"
+            return {"chat_id": str(chat["id"]), "name": name}
+    return None
 
 
 def notify_directors(db: Session, subject: str, message: str) -> None:

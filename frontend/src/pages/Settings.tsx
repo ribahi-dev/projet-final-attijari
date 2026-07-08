@@ -1,17 +1,48 @@
-// Paramètres : profil, thème, informations sur la plateforme.
-import { Moon, Sun } from "lucide-react";
+// Paramètres : profil, thème, notifications Telegram, à propos.
+import { Link2, Moon, Send, Sun } from "lucide-react";
+import { useState } from "react";
+import api, { apiError } from "@/api/client";
 import { PageHeader } from "@/components/layout/AppLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ROLE_LABEL, useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useToast } from "@/contexts/ToastContext";
 import { fmtDate } from "@/lib/format";
 
 export default function Settings() {
   const { user } = useAuth();
   const { theme, toggle } = useTheme();
+  const { toast } = useToast();
+  const [linked, setLinked] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   if (!user) return null;
+
+  async function linkTelegram() {
+    setBusy(true);
+    try {
+      const { data } = await api.post("/notifications/telegram/link-me");
+      setLinked(data.name);
+      toast("success", `Telegram lié au chat de ${data.name} ✅`);
+    } catch (err) {
+      toast("error", apiError(err, "Envoyez d'abord /start à votre bot, puis réessayez."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sendTest() {
+    setBusy(true);
+    try {
+      await api.post("/notifications/test");
+      toast("success", "Notification de test envoyée — vérifiez Telegram 📱");
+    } catch (err) {
+      toast("error", apiError(err, "Aucun canal configuré."));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <>
@@ -44,6 +75,33 @@ export default function Settings() {
           <p className="mt-4 text-xs text-muted-foreground">
             Préférence enregistrée sur cet appareil. Le mode sombre est appliqué à tous les écrans, graphiques compris.
           </p>
+        </Card>
+
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Send size={16} className="text-primary" /> Notifications Telegram
+            </CardTitle>
+            <Badge tone={user.telegram_chat_id || linked ? "success" : "neutral"}>
+              {user.telegram_chat_id || linked ? "lié" : "non lié"}
+            </Badge>
+          </CardHeader>
+          <p className="mb-3 text-sm text-muted-foreground">
+            Recevez les alertes de fraude directement sur Telegram. Ouvrez votre bot,
+            envoyez-lui <code className="rounded bg-muted px-1.5 py-0.5">/start</code>, puis
+            cliquez sur « Lier mon Telegram » : votre identifiant est capté automatiquement.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={linkTelegram} disabled={busy}>
+              <Link2 size={16} /> Lier mon Telegram
+            </Button>
+            <Button onClick={sendTest} disabled={busy}>
+              <Send size={16} /> Envoyer une notification de test
+            </Button>
+          </div>
+          {linked && (
+            <p className="mt-3 text-sm text-success">✅ Compte Telegram de {linked} lié à ce profil.</p>
+          )}
         </Card>
 
         <Card className="md:col-span-2">

@@ -23,18 +23,22 @@ Telegram est gratuit, instantané, et parfait pour une démonstration en direct.
 
 1. Sur Telegram, ouvrir une conversation avec **@BotFather**, envoyer `/newbot`,
    suivre les instructions → on obtient un **TOKEN** (ex. `123456:ABC-DEF...`).
-2. Ouvrir une conversation avec le nouveau bot et lui envoyer un message (`/start`).
-3. Écrire à **@userinfobot** pour obtenir son **CHAT ID** (un nombre).
-4. Renseigner ces valeurs :
-   - soit dans le fichier **`.env` racine** (pour Docker) :
-     ```
-     TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
-     TELEGRAM_CHAT_ID=votre_chat_id
-     ```
-   - soit **par directeur**, via l'interface Admin → Utilisateurs : chaque
-     directeur peut avoir son propre `telegram_chat_id`.
-5. Relancer la plateforme. À la prochaine transaction à risque, une notification
-   Telegram arrive **en direct**. 🎉
+2. Renseigner ce token dans le fichier **`.env` racine** (lu par Docker) :
+   ```
+   TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
+   ```
+3. Ouvrir la conversation avec le nouveau bot et lui envoyer **`/start`**
+   (indispensable : un bot ne peut écrire qu'à qui l'a contacté en premier).
+4. **Récupérer le chat_id — deux méthodes :**
+   - ⭐ **Automatique (recommandée)** : dans l'application, aller dans
+     **Paramètres → Notifications Telegram → « Lier mon Telegram »**. L'app
+     capte l'identifiant toute seule (via l'API `getUpdates`) et l'enregistre
+     sur le profil. Un bouton **« Envoyer une notification de test »** permet
+     de vérifier immédiatement.
+   - Manuelle : écrire à **@userinfobot** pour obtenir le nombre, puis le mettre
+     dans `.env` (`TELEGRAM_CHAT_ID=...`) ou dans le profil du directeur.
+5. À la prochaine transaction à risque, une notification Telegram arrive
+   **en direct**, avec le nom du client, le montant et les signaux détectés. 🎉
 
 ## Activer l'email (SMTP)
 
