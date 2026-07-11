@@ -10,7 +10,7 @@ via model_version — exigence d'auditabilité (MLOps minimal).
 
 L'artefact (ml_artifacts/model.joblib) est un dict :
     {"model": RandomForestClassifier, "feature_names": [...],
-     "version": "ml-rf-v2.0", "trained_at": "...", "metrics": {...}}
+     "version": "ml-rf-v2.1", "trained_at": "...", "metrics": {...}}
 Le chemin vient de settings (ML_MODEL_PATH) pour que les tests puissent
 pointer ailleurs et rester déterministes.
 """

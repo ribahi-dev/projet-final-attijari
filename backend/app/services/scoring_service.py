@@ -3,7 +3,7 @@
     extract_features (app/ml/features.py — code partagé train/inférence)
             │
             ├── modèle ML (RandomForest) si un artefact entraîné existe
-            │        -> model_version = "ml-rf-v2.0"
+            │        -> model_version = "ml-rf-v2.1"
             └── sinon moteur de RÈGLES pondérées (baseline)
                      -> model_version = "mvp-rules-v1"
 
@@ -53,6 +53,14 @@ def _rules_score(f: TransactionFeatures) -> int:
         score += 20
     if f.tx_last_24h >= 5:
         score += 15
+    if f.cumul_72h_over_income >= 3:
+        score += 30
+    elif f.cumul_72h_over_income >= 1.5:
+        score += 15
+    if f.days_since_last_tx >= 90:
+        score += 20
+    elif f.days_since_last_tx >= 30:
+        score += 8
     return min(100, score)
 
 

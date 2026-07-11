@@ -1,12 +1,19 @@
 """Extraction des features de risque d'une transaction.
 
-Les 5 signaux (CdC §9.1), transformés en nombres pour le modèle :
+Les 7 signaux, transformés en nombres pour le modèle :
 
-    amount_over_income : montant / revenu mensuel du client (0 si inconnu)
-    amount_over_avg    : montant / moyenne historique du compte (0 si vide)
-    is_night           : 1 si l'opération a lieu entre 00h et 06h
-    city_changed       : 1 si la ville diffère de la précédente opération
-    tx_last_24h        : nombre d'opérations du compte sur 24h glissantes
+    amount_over_income    : montant / revenu mensuel du client (0 si inconnu)
+    amount_over_avg       : montant / moyenne historique du compte (0 si vide)
+    is_night              : 1 si l'opération a lieu entre 00h et 06h
+    city_changed          : 1 si la ville diffère de la précédente opération
+    tx_last_24h           : nombre d'opérations du compte sur 24h glissantes
+    cumul_72h_over_income : cumul des montants sur 72h / revenu mensuel
+                            -> détecte le FRACTIONNEMENT (structuring) : des
+                            petits montants isolés paraissent normaux, mais
+                            leur SOMME sur 72h trahit le contournement de seuil.
+    days_since_last_tx    : jours depuis la dernière opération du compte
+                            -> détecte la RÉACTIVATION d'un compte DORMANT,
+                            schéma classique d'usurpation / compte compromis.
 
 Règle d'or : cette fonction est LA définition des features. L'entraînement
 (scripts/train_model.py) et l'inférence (scoring_service) l'importent tous
@@ -29,6 +36,8 @@ FEATURE_NAMES = [
     "is_night",
     "city_changed",
     "tx_last_24h",
+    "cumul_72h_over_income",
+    "days_since_last_tx",
 ]
 
 
@@ -39,6 +48,8 @@ class TransactionFeatures:
     is_night: int
     city_changed: int
     tx_last_24h: int
+    cumul_72h_over_income: float = 0.0
+    days_since_last_tx: int = 0
 
     def as_vector(self) -> list[float]:
         d = asdict(self)
@@ -85,12 +96,38 @@ def extract_features(
         )
     ) or 0
 
+    # Cumul 72h (fractionnement) — la somme INCLUT l'opération courante :
+    # c'est le total qui trahit le contournement, pas le montant isolé.
+    since_72h = moment - timedelta(hours=72)
+    sum_72h = db.scalar(
+        select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+            Transaction.account_id == account.id,
+            Transaction.created_at >= since_72h,
+        )
+    ) or Decimal(0)
+    total_72h = Decimal(sum_72h) + amount
+    cumul_72h_over_income = float(total_72h / income) if income and income > 0 else 0.0
+
+    # Jours depuis la dernière opération (compte dormant réactivé).
+    # Plafonné à 365 : au-delà, l'information n'augmente plus le risque.
+    last_tx_date = db.scalar(
+        select(func.max(Transaction.created_at)).where(Transaction.account_id == account.id)
+    )
+    if last_tx_date is not None:
+        m = moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+        lt = last_tx_date if last_tx_date.tzinfo else last_tx_date.replace(tzinfo=timezone.utc)
+        days_since_last_tx = min(365, max(0, (m - lt).days))
+    else:
+        days_since_last_tx = 0
+
     return TransactionFeatures(
         amount_over_income=amount_over_income,
         amount_over_avg=amount_over_avg,
         is_night=is_night,
         city_changed=city_changed,
         tx_last_24h=int(tx_last_24h),
+        cumul_72h_over_income=cumul_72h_over_income,
+        days_since_last_tx=days_since_last_tx,
     )
 
 
@@ -111,4 +148,13 @@ def explain_features(f: TransactionFeatures) -> list[str]:
         reasons.append("ville inhabituelle par rapport aux opérations précédentes")
     if f.tx_last_24h >= 5:
         reasons.append(f"{f.tx_last_24h} opérations sur les dernières 24h")
+    if f.cumul_72h_over_income >= 1.5:
+        reasons.append(
+            f"cumul des opérations sur 72h élevé ({f.cumul_72h_over_income:.1f}x le revenu)"
+            " — possible fractionnement"
+        )
+    if f.days_since_last_tx >= 90:
+        reasons.append(f"compte dormant réactivé (aucune opération depuis {f.days_since_last_tx} jours)")
+    elif f.days_since_last_tx >= 30:
+        reasons.append(f"compte peu actif ({f.days_since_last_tx} jours d'inactivité)")
     return reasons

@@ -12,7 +12,7 @@ problème de **classification binaire fortement déséquilibré** : la fraude es
 
 ## 2. Les caractéristiques (features)
 
-Chaque transaction est transformée en **5 signaux numériques**, calculés par un code
+Chaque transaction est transformée en **7 signaux numériques**, calculés par un code
 **partagé entre l'entraînement et l'inférence** (`app/ml/features.py`) — pour éviter
 tout écart entre les deux (*training/serving skew*, bug classique du ML) :
 
@@ -23,17 +23,28 @@ tout écart entre les deux (*training/serving skew*, bug classique du ML) :
 | `is_night` | opération entre 00h et 06h (0/1) |
 | `city_changed` | ville différente de l'opération précédente (0/1) |
 | `tx_last_24h` | nombre d'opérations du compte sur 24h |
+| `cumul_72h_over_income` | cumul des opérations sur 72h ÷ revenu — détecte le **fractionnement** (*structuring*) |
+| `days_since_last_tx` | jours depuis la dernière opération (plafonné à 365) — détecte la **réactivation d'un compte dormant** |
+
+Les deux dernières sont des **features temporelles** ajoutées en v2.1, en réponse à deux
+schémas de fraude documentés au Maroc : le fractionnement d'un gros montant en plusieurs
+petits pour passer sous les seuils unitaires, et le « réveil » d'un compte inactif par
+une grosse opération (signature classique d'usurpation). Dans les deux cas, la
+transaction **isolée** paraît normale — seul le **contexte temporel** trahit la fraude.
 
 ## 3. Les données
 
 Faute d'accès à des données bancaires réelles (hors périmètre du stage), nous générons un
-**jeu simulé statistiquement réaliste** (`scripts/train_model.py`, ~10 000 transactions,
-1,5 % de fraudes). Point méthodologique **essentiel** : nous avons introduit un
-**chevauchement volontaire entre les classes** —
+**jeu simulé statistiquement réaliste** (`scripts/train_model.py`, ~20 000 transactions,
+1,5 % de fraudes — passage de 10 000 à 20 000 en v2.1 pour conserver assez d'exemples
+par profil de fraude, désormais au nombre de sept). Point méthodologique **essentiel** :
+nous avons introduit un **chevauchement volontaire entre les classes** —
 
 - ~7 % des transactions **légitimes** sont "atypiques" (salaire, loyer, achat
   exceptionnel, déplacement) ;
-- 20 % des **fraudes** suivent un profil "discret", volontairement proche du légitime.
+- les **fraudes** se répartissent sur **7 profils** (gros montant, nuit+déplacement,
+  rafale, mixte, discret, **fractionnement**, **compte dormant**), dont un profil
+  "discret" volontairement proche du légitime.
 
 Sans ce chevauchement, le problème serait trivialement séparable et les métriques
 seraient **artificiellement parfaites** — ce qui n'aurait aucune valeur scientifique.
@@ -44,7 +55,7 @@ seraient **artificiellement parfaites** — ce qui n'aurait aucune valeur scient
 |---|---|---|
 | **Moteur de règles** (`mvp-rules-v1`) | Heuristique | Baseline de référence à battre |
 | **Isolation Forest** | Non supervisé | Alternative sans étiquettes |
-| **Random Forest** (`ml-rf-v2.0`) | Supervisé | Modèle retenu |
+| **Random Forest** (`ml-rf-v2.1`) | Supervisé | Modèle retenu |
 
 Le Random Forest est entraîné avec `class_weight="balanced"` pour compenser le
 déséquilibre **sans rééchantillonnage artificiel** (nous évitons SMOTE, qui peut dégrader
@@ -54,37 +65,47 @@ la fidélité des explications — cf. état de l'art).
 
 Nous évaluons avec **précision, rappel, F1 et AUC-PR** — **jamais l'exactitude
 (accuracy) seule**, trompeuse à 98,5 % de classe majoritaire. Résultats sur le jeu de
-test (3 000 transactions jamais vues, seuil d'alerte = 70) :
+test (6 000 transactions jamais vues, seuil d'alerte = 70) :
 
 | Modèle | Précision | Rappel | F1 | AUC-PR |
 |---|---|---|---|---|
-| Règles (baseline) | 0,545 | 0,400 | 0,462 | 0,454 |
-| Isolation Forest | 0,313 | 0,689 | 0,431 | 0,562 |
-| **Random Forest (retenu)** | **0,634** | **0,578** | **0,605** | **0,589** |
+| Règles (baseline) | 0,277 | 0,352 | 0,310 | 0,285 |
+| Isolation Forest | 0,232 | 0,591 | 0,333 | 0,342 |
+| **Random Forest (retenu)** | **0,725** | **0,420** | **0,532** | **0,552** |
 
-> **Lecture** : le Random Forest **surpasse la baseline de règles sur toutes les
-> métriques** (F1 0,61 vs 0,46 ; AUC-PR 0,59 vs 0,45). Les valeurs absolues modérées
-> reflètent la **difficulté réelle** du problème (fraude rare et partiellement
-> indiscernable) — nous avons **refusé de gonfler artificiellement** les résultats.
+> **Lecture** : le Random Forest **surpasse nettement la baseline de règles** (F1 0,53
+> vs 0,31 ; AUC-PR 0,55 vs 0,29). L'écart s'est même **creusé** avec l'ajout des profils
+> de fraude temporels (fractionnement, compte dormant) : ces schémas, presque invisibles
+> pour des règles à seuils fixes, sont précisément là où un modèle appris excelle.
+> Noter la **précision de 0,73** : quand le modèle alerte, il a raison presque 3 fois
+> sur 4 — moitié moins d'alertes générées que la baseline (51 vs 112) pour davantage de
+> fraudes attrapées. Les valeurs absolues modérées reflètent la **difficulté réelle** du
+> problème (fraude rare et partiellement indiscernable) — nous avons **refusé de gonfler
+> artificiellement** les résultats.
 
 ### Importance des variables (Random Forest)
 
 | Feature | Importance |
 |---|---|
-| `amount_over_income` | 0,385 |
-| `amount_over_avg` | 0,295 |
-| `city_changed` | 0,134 |
-| `is_night` | 0,119 |
-| `tx_last_24h` | 0,067 |
+| `cumul_72h_over_income` | 0,401 |
+| `amount_over_avg` | 0,183 |
+| `amount_over_income` | 0,149 |
+| `days_since_last_tx` | 0,085 |
+| `is_night` | 0,081 |
+| `tx_last_24h` | 0,063 |
+| `city_changed` | 0,039 |
 
-Le montant rapporté au profil du client est, logiquement, le signal le plus discriminant.
+Résultat marquant : **la nouvelle feature de fractionnement est devenue le signal le
+plus discriminant du modèle** (0,40) — elle capte une information que ni le montant
+isolé ni la fréquence ne voient. C'est la démonstration chiffrée que l'ingénierie de
+features guidée par la connaissance métier (LBC-FT) vaut plus qu'un modèle plus complexe.
 
 ## 6. Intégration dans l'application
 
 Le scoring possède **deux moteurs derrière une interface unique**
 (`app/services/scoring_service.py`) :
 
-1. **Modèle ML** (Random Forest) si un artefact entraîné est présent → `ml-rf-v2.0` ;
+1. **Modèle ML** (Random Forest) si un artefact entraîné est présent → `ml-rf-v2.1` ;
 2. **Repli automatique** sur le moteur de règles sinon → `mvp-rules-v1`.
 
 L'application n'est **jamais** en panne de scoring. Chaque score enregistré garde la

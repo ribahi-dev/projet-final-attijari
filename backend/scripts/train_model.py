@@ -3,7 +3,7 @@
 Démarche (documentée pour le rapport, §9.1 du cahier des charges) :
 
 1. DONNÉES : génération d'un jeu étiqueté simulé mais statistiquement
-   réaliste (~10 000 transactions, ~1,5 % de fraudes — la fraude est RARE,
+   réaliste (~20 000 transactions, ~1,5 % de fraudes — la fraude est RARE,
    on n'équilibre pas artificiellement le jeu de TEST, conformément à la
    mise en garde de l'état de l'art §2.3 sur les métriques gonflées).
    S'y AJOUTENT les étiquettes réelles de la boucle de feedback : chaque
@@ -37,7 +37,7 @@ from sklearn.model_selection import train_test_split
 
 from app.ml.features import FEATURE_NAMES, TransactionFeatures
 
-MODEL_VERSION = "ml-rf-v2.0"
+MODEL_VERSION = "ml-rf-v2.1"  # v2.1 : +fractionnement (cumul 72h) +comptes dormants
 ARTIFACTS_DIR = Path("ml_artifacts")
 SEED = 42
 
@@ -45,7 +45,7 @@ rng = random.Random(SEED)
 np_rng = np.random.default_rng(SEED)
 
 
-def generate_labeled_dataset(n: int = 10_000, fraud_rate: float = 0.015):
+def generate_labeled_dataset(n: int = 20_000, fraud_rate: float = 0.015):
     """Simule des vecteurs de features selon deux régimes de comportement.
 
     Légitime : montants faibles vs revenu, heures de bureau, ville stable.
@@ -69,11 +69,15 @@ def generate_labeled_dataset(n: int = 10_000, fraud_rate: float = 0.015):
                 is_night=1 if rng.random() < (0.20 if atypical else 0.04) else 0,
                 city_changed=1 if rng.random() < (0.35 if atypical else 0.08) else 0,
                 tx_last_24h=int(abs(np_rng.normal(1.8, 1.5))),
+                cumul_72h_over_income=abs(np_rng.normal(1.5, 1.0)) if atypical else abs(np_rng.normal(0.4, 0.3)),
+                days_since_last_tx=int(abs(np_rng.normal(20, 25))) if atypical else int(abs(np_rng.normal(3, 5))),
             )
         else:
             # Une fraude n'allume pas TOUS les signaux : tirage d'un profil,
             # dont un profil "discret" volontairement proche du légitime.
-            profile = rng.choice(["big_amount", "night_away", "burst", "mixed", "subtle"])
+            profile = rng.choice(
+                ["big_amount", "night_away", "burst", "mixed", "subtle", "structuring", "dormant"]
+            )
             if profile == "subtle":
                 features = TransactionFeatures(
                     amount_over_income=abs(np_rng.normal(0.6, 0.4)),
@@ -81,6 +85,33 @@ def generate_labeled_dataset(n: int = 10_000, fraud_rate: float = 0.015):
                     is_night=1 if rng.random() < 0.25 else 0,
                     city_changed=1 if rng.random() < 0.35 else 0,
                     tx_last_24h=int(abs(np_rng.normal(3, 2))),
+                    cumul_72h_over_income=abs(np_rng.normal(1.2, 0.8)),
+                    days_since_last_tx=int(abs(np_rng.normal(10, 15))),
+                )
+            elif profile == "structuring":
+                # FRACTIONNEMENT : chaque montant reste MODÉRÉ (passe sous les
+                # seuils unitaires), mais le cumul 72h explose — seule la
+                # nouvelle feature cumul_72h_over_income voit ce schéma.
+                features = TransactionFeatures(
+                    amount_over_income=abs(np_rng.normal(0.4, 0.2)),
+                    amount_over_avg=abs(np_rng.normal(1.5, 0.8)),
+                    is_night=1 if rng.random() < 0.15 else 0,
+                    city_changed=1 if rng.random() < 0.2 else 0,
+                    tx_last_24h=int(abs(np_rng.normal(4, 2))),
+                    cumul_72h_over_income=abs(np_rng.normal(4.0, 1.5)),
+                    days_since_last_tx=int(abs(np_rng.normal(3, 4))),
+                )
+            elif profile == "dormant":
+                # COMPTE DORMANT réactivé par un gros retrait : signature
+                # classique d'usurpation / compte compromis.
+                features = TransactionFeatures(
+                    amount_over_income=abs(np_rng.normal(1.8, 1.0)),
+                    amount_over_avg=abs(np_rng.normal(3.5, 2.0)),
+                    is_night=1 if rng.random() < 0.3 else 0,
+                    city_changed=1 if rng.random() < 0.5 else 0,
+                    tx_last_24h=int(abs(np_rng.normal(1, 1))),
+                    cumul_72h_over_income=abs(np_rng.normal(2.0, 1.2)),
+                    days_since_last_tx=min(365, int(abs(np_rng.normal(150, 60)))),
                 )
             else:
                 features = TransactionFeatures(
@@ -92,6 +123,8 @@ def generate_labeled_dataset(n: int = 10_000, fraud_rate: float = 0.015):
                     is_night=1 if profile in ("night_away", "mixed") or rng.random() < 0.3 else 0,
                     city_changed=1 if profile in ("night_away", "mixed") or rng.random() < 0.4 else 0,
                     tx_last_24h=int(abs(np_rng.normal(6, 3))) if profile in ("burst", "mixed") else int(abs(np_rng.normal(2, 1.5))),
+                    cumul_72h_over_income=abs(np_rng.normal(1.5, 1.0)),
+                    days_since_last_tx=int(abs(np_rng.normal(8, 10))),
                 )
         X.append(features.as_vector())
         y.append(1 if is_fraud else 0)
@@ -129,7 +162,7 @@ def load_feedback_labels():
 
 def rules_score_vector(x: np.ndarray) -> int:
     """Réplique de la baseline mvp-rules-v1 pour comparaison équitable."""
-    amount_over_income, amount_over_avg, is_night, city_changed, tx_24h = x
+    amount_over_income, amount_over_avg, is_night, city_changed, tx_24h, cumul_72h, days_since = x
     score = 0
     if amount_over_income >= 2:
         score += 45
@@ -147,6 +180,14 @@ def rules_score_vector(x: np.ndarray) -> int:
         score += 20
     if tx_24h >= 5:
         score += 15
+    if cumul_72h >= 3:
+        score += 30
+    elif cumul_72h >= 1.5:
+        score += 15
+    if days_since >= 90:
+        score += 20
+    elif days_since >= 30:
+        score += 8
     return min(100, score)
 
 
@@ -189,8 +230,10 @@ def main() -> None:
     print("2/4 Entraînement des modèles…")
     # class_weight='balanced' : compense le déséquilibre SANS rééchantillonner
     # (évite l'effet SMOTE sur la fidélité des explications — CdC §2.3).
+    # max_depth=10 : 7 features (dont 2 signaux temporels) demandent des
+    # arbres un peu plus profonds pour croiser les dimensions.
     rf = RandomForestClassifier(
-        n_estimators=200, max_depth=8, class_weight="balanced", random_state=SEED, n_jobs=-1
+        n_estimators=300, max_depth=10, class_weight="balanced", random_state=SEED, n_jobs=-1
     )
     rf.fit(X_train, y_train)
 

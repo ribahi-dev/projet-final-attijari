@@ -16,10 +16,11 @@ from app.ml.features import FEATURE_NAMES, TransactionFeatures, explain_features
 
 def test_feature_vector_order_is_canonical():
     f = TransactionFeatures(
-        amount_over_income=1.5, amount_over_avg=2.0, is_night=1, city_changed=0, tx_last_24h=3
+        amount_over_income=1.5, amount_over_avg=2.0, is_night=1, city_changed=0, tx_last_24h=3,
+        cumul_72h_over_income=0.8, days_since_last_tx=12,
     )
-    assert f.as_vector() == [1.5, 2.0, 1.0, 0.0, 3.0]
-    assert len(FEATURE_NAMES) == 5
+    assert f.as_vector() == [1.5, 2.0, 1.0, 0.0, 3.0, 0.8, 12.0]
+    assert len(FEATURE_NAMES) == 7
 
 
 def test_explain_features_is_human_readable():
@@ -31,6 +32,28 @@ def test_explain_features_is_human_readable():
     assert "montant" in joined
     assert "nocturne" in joined
     assert "ville" in joined
+
+
+def test_explain_features_structuring_and_dormant():
+    """Les 2 nouveaux signaux produisent des raisons lisibles :
+    fractionnement (cumul 72h) et compte dormant réactivé."""
+    f = TransactionFeatures(
+        amount_over_income=0.3, amount_over_avg=1.0, is_night=0, city_changed=0, tx_last_24h=2,
+        cumul_72h_over_income=4.2, days_since_last_tx=120,
+    )
+    joined = " ".join(explain_features(f)).lower()
+    assert "fractionnement" in joined
+    assert "dormant" in joined
+
+    # Palier intermédiaire : compte peu actif (30-89 jours), pas "dormant".
+    f2 = TransactionFeatures(
+        amount_over_income=0.3, amount_over_avg=1.0, is_night=0, city_changed=0, tx_last_24h=2,
+        cumul_72h_over_income=0.4, days_since_last_tx=45,
+    )
+    joined2 = " ".join(explain_features(f2)).lower()
+    assert "peu actif" in joined2
+    assert "dormant" not in joined2
+    assert "fractionnement" not in joined2
 
 
 def test_scoring_falls_back_to_rules_without_artifact(client, auth_headers):
@@ -53,8 +76,8 @@ def test_scoring_falls_back_to_rules_without_artifact(client, auth_headers):
 def test_model_loads_valid_artifact_and_rejects_bad_features(tmp_path, monkeypatch):
     """Le loader accepte un artefact conforme et REFUSE un ordre de
     features divergent (protection contre le training/serving skew)."""
-    # Petit modèle jouet entraîné sur des vecteurs à 5 features.
-    X = np.array([[0, 0, 0, 0, 0], [5, 5, 1, 1, 8]] * 5)
+    # Petit modèle jouet entraîné sur des vecteurs à 7 features.
+    X = np.array([[0, 0, 0, 0, 0, 0, 0], [5, 5, 1, 1, 8, 4, 150]] * 5)
     y = np.array([0, 1] * 5)
     rf = RandomForestClassifier(n_estimators=5, random_state=0).fit(X, y)
 
@@ -86,7 +109,7 @@ def test_model_loads_valid_artifact_and_rejects_bad_features(tmp_path, monkeypat
 
 def test_shap_contributions_when_model_present(tmp_path, monkeypatch):
     """SHAP renvoie une contribution par variable quand un modèle existe."""
-    X = np.array([[0, 0, 0, 0, 0], [6, 6, 1, 1, 9]] * 8)
+    X = np.array([[0, 0, 0, 0, 0, 0, 0], [6, 6, 1, 1, 9, 5, 150]] * 8)
     y = np.array([0, 1] * 8)
     rf = RandomForestClassifier(n_estimators=10, random_state=0).fit(X, y)
     artifact = tmp_path / "m.joblib"
