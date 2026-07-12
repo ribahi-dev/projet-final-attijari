@@ -143,11 +143,14 @@ def generate_suspicion_report_pdf(db: Session, alert: Alert) -> bytes:
     # ----- 5. Analyse du système de détection (le cœur "IA" du dossier) --
     story.append(Paragraph("5. Analyse du système de détection", h2))
     if risk:
+        cell = ParagraphStyle("cell", parent=normal, fontSize=9)
         story.append(info_table([
             ["Score de risque", f"{risk.score}/100"],
             ["Niveau de confiance", risk.confidence_level],
             ["Moteur ayant produit le score", risk.model_version],
-            ["Explication", risk.explanation],
+            # Paragraph et non str : le texte long doit se REPLIER dans la
+            # cellule (une chaîne brute déborde du tableau reportlab).
+            ["Explication", Paragraph(risk.explanation, cell)],
         ]))
         # Contributions SHAP : la justification variable par variable de la
         # décision du modèle — l'exigence d'explicabilité appliquée à un
@@ -193,7 +196,9 @@ def generate_suspicion_report_pdf(db: Session, alert: Alert) -> bytes:
     ).all()
     hist_rows = [["Date", "Type", "Montant (MAD)", "Ville", "Score"]]
     for h in history:
-        marker = " ◀ opération déclarée" if h.id == tx.id else ""
+        # « — » et non « ◀ » : les polices standard PDF (WinAnsi) n'ont pas
+        # ce glyphe et afficheraient un carré.
+        marker = " — opération déclarée" if h.id == tx.id else ""
         hist_rows.append([
             h.created_at.strftime("%d/%m/%Y %H:%M"),
             TYPE_LABELS.get(h.transaction_type, h.transaction_type),
