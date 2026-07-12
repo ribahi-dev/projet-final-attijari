@@ -49,6 +49,22 @@ nous avons introduit un **chevauchement volontaire entre les classes** —
 Sans ce chevauchement, le problème serait trivialement séparable et les métriques
 seraient **artificiellement parfaites** — ce qui n'aurait aucune valeur scientifique.
 
+### Cohérence physique du jeu simulé (leçon apprise en v2.1) ⚠️
+
+Les features temporelles sont **liées entre elles dans la réalité** : le cumul 72h
+*inclut* l'opération courante (donc `cumul_72h_over_income ≥ amount_over_income`,
+toujours), et un compte inactif depuis plusieurs jours n'a par définition **rien** dans
+ses fenêtres 24h/72h. Notre première version du générateur tirait ces valeurs
+**indépendamment**, créant des combinaisons physiquement impossibles (gros montant avec
+petit cumul, compte dormant avec des opérations récentes).
+
+Conséquence observée en test réel : une vraie transaction — dont les features respectent
+forcément ces lois — tombait **hors de la distribution apprise**, et le modèle devenait
+imprévisible (un retrait de 13x le revenu ne scorait que 49/100 !). Le correctif
+(`_make_features()` impose les contraintes) a rétabli un comportement cohérent :
+le même retrait score désormais 80/100. C'est une illustration concrète du
+**training/serving skew appliqué aux données** — le piège classique du ML en production.
+
 ## 4. Les modèles comparés
 
 | Modèle | Type | Rôle |
@@ -69,16 +85,16 @@ test (6 000 transactions jamais vues, seuil d'alerte = 70) :
 
 | Modèle | Précision | Rappel | F1 | AUC-PR |
 |---|---|---|---|---|
-| Règles (baseline) | 0,277 | 0,352 | 0,310 | 0,285 |
-| Isolation Forest | 0,232 | 0,591 | 0,333 | 0,342 |
-| **Random Forest (retenu)** | **0,725** | **0,420** | **0,532** | **0,552** |
+| Règles (baseline) | 0,262 | 0,375 | 0,308 | 0,263 |
+| Isolation Forest | 0,269 | 0,591 | 0,370 | 0,326 |
+| **Random Forest (retenu)** | **0,774** | **0,466** | **0,582** | **0,612** |
 
-> **Lecture** : le Random Forest **surpasse nettement la baseline de règles** (F1 0,53
-> vs 0,31 ; AUC-PR 0,55 vs 0,29). L'écart s'est même **creusé** avec l'ajout des profils
+> **Lecture** : le Random Forest **surpasse nettement la baseline de règles** (F1 0,58
+> vs 0,31 ; AUC-PR 0,61 vs 0,26). L'écart s'est même **creusé** avec l'ajout des profils
 > de fraude temporels (fractionnement, compte dormant) : ces schémas, presque invisibles
 > pour des règles à seuils fixes, sont précisément là où un modèle appris excelle.
-> Noter la **précision de 0,73** : quand le modèle alerte, il a raison presque 3 fois
-> sur 4 — moitié moins d'alertes générées que la baseline (51 vs 112) pour davantage de
+> Noter la **précision de 0,77** : quand le modèle alerte, il a raison 3 fois sur 4 —
+> deux fois moins d'alertes générées que la baseline (53 vs 126) pour davantage de
 > fraudes attrapées. Les valeurs absolues modérées reflètent la **difficulté réelle** du
 > problème (fraude rare et partiellement indiscernable) — nous avons **refusé de gonfler
 > artificiellement** les résultats.
@@ -87,17 +103,17 @@ test (6 000 transactions jamais vues, seuil d'alerte = 70) :
 
 | Feature | Importance |
 |---|---|
-| `cumul_72h_over_income` | 0,401 |
-| `amount_over_avg` | 0,183 |
-| `amount_over_income` | 0,149 |
-| `days_since_last_tx` | 0,085 |
-| `is_night` | 0,081 |
-| `tx_last_24h` | 0,063 |
-| `city_changed` | 0,039 |
+| `cumul_72h_over_income` | **0,318** |
+| `amount_over_avg` | 0,213 |
+| `amount_over_income` | 0,185 |
+| `days_since_last_tx` | 0,100 |
+| `is_night` | 0,098 |
+| `city_changed` | 0,051 |
+| `tx_last_24h` | 0,034 |
 
-Résultat marquant : **la nouvelle feature de fractionnement est devenue le signal le
-plus discriminant du modèle** (0,40) — elle capte une information que ni le montant
-isolé ni la fréquence ne voient. C'est la démonstration chiffrée que l'ingénierie de
+Résultat marquant : **la nouvelle feature de fractionnement est le signal le plus
+discriminant du modèle** (0,32) — elle capte une information que ni le montant isolé
+ni la fréquence ne voient. C'est la démonstration chiffrée que l'ingénierie de
 features guidée par la connaissance métier (LBC-FT) vaut plus qu'un modèle plus complexe.
 
 ## 6. Intégration dans l'application

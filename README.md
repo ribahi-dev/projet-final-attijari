@@ -125,16 +125,29 @@ testable et évolutif.
 - 💳 **Comptes** — ouverture, numéro généré par le système, blocage/déblocage.
 - 🔁 **Transactions** — dépôt, retrait, **virement avec verrou PostgreSQL** (pas de
   corruption de solde en cas d'opérations simultanées).
-- 🤖 **Scoring de risque par IA** — modèle **Random Forest** (scikit-learn) sur 5 signaux
-  (montant/revenu, heure, ville, fréquence), score 0–100 **avec explication lisible**.
-  Repli automatique sur un moteur de règles si le modèle est absent.
+- 🤖 **Scoring de risque par IA** — modèle **Random Forest** (scikit-learn) sur **7 signaux**
+  (montant/revenu, heure, ville, fréquence, **cumul 72h anti-fractionnement**, **inactivité
+  du compte**), score 0–100 **avec explication lisible**. Repli automatique sur un moteur
+  de règles si le modèle est absent.
+- 🧩 **Détection du fractionnement** (*structuring*) — le cumul des opérations sur 72h
+  rapporté au revenu attrape les gros montants découpés en petits pour passer sous les
+  seuils (1ʳᵉ feature du modèle en importance : 0,40).
+- 💤 **Comptes dormants réactivés** — un compte inactif depuis des mois qui « se réveille »
+  avec une grosse opération (signature d'usurpation) est signalé.
 - 🔍 **Explicabilité SHAP** — contribution de chaque variable au score, affichée en
   graphique (méthode XAI de référence, exigence de conformité RGPD / EU AI Act).
 - 📑 **Rapports serveur** — génération PDF (reportlab) et Excel (openpyxl) téléchargeables.
 - 🔁 **Boucle de feedback** — la qualification des alertes par le directeur
   (fraude confirmée / faux positif) alimente le réentraînement du modèle.
 - 🚨 **Centre d'alertes** — création automatique, cycle de vie (ouverte → en cours →
-  clôturée), détail explicable.
+  clôturée avec qualification obligatoire), détail explicable.
+- ⚖️ **Déclaration de soupçon (LBC-FT)** — dossier PDF réglementaire généré en un clic
+  depuis une alerte confirmée : identité KYC, opération, analyse IA + SHAP, chronologie
+  du compte, cadre légal marocain (loi 43-05 / ANRF). Modèle indicatif, audité.
+- 📈 **Suivi de la fraude & santé du modèle (MLOps)** — précision réelle en production
+  calculée sur les qualifications du directeur, taux de faux positifs, volume de feedback,
+  distribution des scores — pour savoir **quand réentraîner** (inspiré du Suivi de la
+  fraude de Bank Al-Maghrib).
 - 📊 **Tableau de bord** — KPI et graphiques Plotly (activité, répartition, risque).
 - 📄 **Rapports** — export des données (CSV/Excel).
 - 📜 **Audit** — journal append-only de toutes les actions sensibles (qui, quoi, quand, IP).

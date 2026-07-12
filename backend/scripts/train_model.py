@@ -45,6 +45,42 @@ rng = random.Random(SEED)
 np_rng = np.random.default_rng(SEED)
 
 
+def _make_features(
+    amount_over_income: float,
+    amount_over_avg: float,
+    is_night: int,
+    city_changed: int,
+    tx_last_24h: int,
+    extra_72h_over_income: float,
+    idle_days: int,
+) -> TransactionFeatures:
+    """Assemble un vecteur en imposant les CONTRAINTES PHYSIQUES du réel.
+
+    En inférence (`extract_features`), les features temporelles sont liées
+    entre elles ; le jeu simulé doit respecter les mêmes lois, sinon les
+    vraies transactions tombent HORS de la distribution apprise et le
+    modèle devient imprévisible (training/serving skew, version données) :
+
+    1. le cumul 72h INCLUT l'opération courante
+       -> cumul_72h_over_income >= amount_over_income, toujours ;
+    2. un compte inactif depuis >= 1 jour n'a rien dans les 24h ;
+    3. un compte inactif depuis >= 3 jours (72h) n'a rien dans le cumul.
+    """
+    if idle_days >= 1:
+        tx_last_24h = 0
+    if idle_days >= 3:
+        extra_72h_over_income = 0.0
+    return TransactionFeatures(
+        amount_over_income=amount_over_income,
+        amount_over_avg=amount_over_avg,
+        is_night=is_night,
+        city_changed=city_changed,
+        tx_last_24h=tx_last_24h,
+        cumul_72h_over_income=amount_over_income + extra_72h_over_income,
+        days_since_last_tx=min(365, max(0, idle_days)),
+    )
+
+
 def generate_labeled_dataset(n: int = 20_000, fraud_rate: float = 0.015):
     """Simule des vecteurs de features selon deux régimes de comportement.
 
@@ -53,6 +89,7 @@ def generate_labeled_dataset(n: int = 20_000, fraud_rate: float = 0.015):
     changement de ville ET/OU rafale d'opérations) — avec chevauchement
     volontaire entre les deux classes : un jeu parfaitement séparable
     donnerait des métriques irréalistes (rappel de l'état de l'art §2.3).
+    Toutes les lignes passent par _make_features (cohérence temporelle).
     """
     X, y = [], []
     for _ in range(n):
@@ -63,14 +100,14 @@ def generate_labeled_dataset(n: int = 20_000, fraud_rate: float = 0.015):
             # exceptionnel, déplacement) — c'est ce chevauchement qui rend
             # le problème difficile et les métriques crédibles.
             atypical = rng.random() < 0.07
-            features = TransactionFeatures(
+            features = _make_features(
                 amount_over_income=abs(np_rng.normal(1.4, 0.9)) if atypical else abs(np_rng.normal(0.15, 0.35)),
                 amount_over_avg=abs(np_rng.normal(3.0, 2.0)) if atypical else abs(np_rng.normal(1.0, 0.9)),
                 is_night=1 if rng.random() < (0.20 if atypical else 0.04) else 0,
                 city_changed=1 if rng.random() < (0.35 if atypical else 0.08) else 0,
                 tx_last_24h=int(abs(np_rng.normal(1.8, 1.5))),
-                cumul_72h_over_income=abs(np_rng.normal(1.5, 1.0)) if atypical else abs(np_rng.normal(0.4, 0.3)),
-                days_since_last_tx=int(abs(np_rng.normal(20, 25))) if atypical else int(abs(np_rng.normal(3, 5))),
+                extra_72h_over_income=abs(np_rng.normal(0.5, 0.5)) if atypical else abs(np_rng.normal(0.25, 0.2)),
+                idle_days=int(abs(np_rng.normal(20, 25))) if atypical else int(abs(np_rng.normal(3, 5))),
             )
         else:
             # Une fraude n'allume pas TOUS les signaux : tirage d'un profil,
@@ -79,42 +116,43 @@ def generate_labeled_dataset(n: int = 20_000, fraud_rate: float = 0.015):
                 ["big_amount", "night_away", "burst", "mixed", "subtle", "structuring", "dormant"]
             )
             if profile == "subtle":
-                features = TransactionFeatures(
+                features = _make_features(
                     amount_over_income=abs(np_rng.normal(0.6, 0.4)),
                     amount_over_avg=abs(np_rng.normal(2.0, 1.2)),
                     is_night=1 if rng.random() < 0.25 else 0,
                     city_changed=1 if rng.random() < 0.35 else 0,
                     tx_last_24h=int(abs(np_rng.normal(3, 2))),
-                    cumul_72h_over_income=abs(np_rng.normal(1.2, 0.8)),
-                    days_since_last_tx=int(abs(np_rng.normal(10, 15))),
+                    extra_72h_over_income=abs(np_rng.normal(0.6, 0.5)),
+                    idle_days=int(abs(np_rng.normal(10, 15))),
                 )
             elif profile == "structuring":
                 # FRACTIONNEMENT : chaque montant reste MODÉRÉ (passe sous les
                 # seuils unitaires), mais le cumul 72h explose — seule la
                 # nouvelle feature cumul_72h_over_income voit ce schéma.
-                features = TransactionFeatures(
+                features = _make_features(
                     amount_over_income=abs(np_rng.normal(0.4, 0.2)),
                     amount_over_avg=abs(np_rng.normal(1.5, 0.8)),
                     is_night=1 if rng.random() < 0.15 else 0,
                     city_changed=1 if rng.random() < 0.2 else 0,
                     tx_last_24h=int(abs(np_rng.normal(4, 2))),
-                    cumul_72h_over_income=abs(np_rng.normal(4.0, 1.5)),
-                    days_since_last_tx=int(abs(np_rng.normal(3, 4))),
+                    extra_72h_over_income=abs(np_rng.normal(3.5, 1.5)),
+                    idle_days=0,
                 )
             elif profile == "dormant":
                 # COMPTE DORMANT réactivé par un gros retrait : signature
-                # classique d'usurpation / compte compromis.
-                features = TransactionFeatures(
+                # classique d'usurpation. Par construction : rien dans les
+                # 24h/72h -> le cumul se réduit à l'opération courante.
+                features = _make_features(
                     amount_over_income=abs(np_rng.normal(1.8, 1.0)),
                     amount_over_avg=abs(np_rng.normal(3.5, 2.0)),
                     is_night=1 if rng.random() < 0.3 else 0,
                     city_changed=1 if rng.random() < 0.5 else 0,
-                    tx_last_24h=int(abs(np_rng.normal(1, 1))),
-                    cumul_72h_over_income=abs(np_rng.normal(2.0, 1.2)),
-                    days_since_last_tx=min(365, int(abs(np_rng.normal(150, 60)))),
+                    tx_last_24h=0,
+                    extra_72h_over_income=0.0,
+                    idle_days=max(30, int(abs(np_rng.normal(150, 60)))),
                 )
             else:
-                features = TransactionFeatures(
+                features = _make_features(
                     amount_over_income=(
                         abs(np_rng.normal(2.6, 1.6)) if profile in ("big_amount", "mixed")
                         else abs(np_rng.normal(0.8, 0.6))
@@ -123,8 +161,11 @@ def generate_labeled_dataset(n: int = 20_000, fraud_rate: float = 0.015):
                     is_night=1 if profile in ("night_away", "mixed") or rng.random() < 0.3 else 0,
                     city_changed=1 if profile in ("night_away", "mixed") or rng.random() < 0.4 else 0,
                     tx_last_24h=int(abs(np_rng.normal(6, 3))) if profile in ("burst", "mixed") else int(abs(np_rng.normal(2, 1.5))),
-                    cumul_72h_over_income=abs(np_rng.normal(1.5, 1.0)),
-                    days_since_last_tx=int(abs(np_rng.normal(8, 10))),
+                    extra_72h_over_income=(
+                        abs(np_rng.normal(1.5, 1.0)) if profile in ("burst", "mixed")
+                        else abs(np_rng.normal(0.5, 0.4))
+                    ),
+                    idle_days=int(abs(np_rng.normal(4, 5))),
                 )
         X.append(features.as_vector())
         y.append(1 if is_fraud else 0)
