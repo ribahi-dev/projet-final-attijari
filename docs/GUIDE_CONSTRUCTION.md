@@ -24,6 +24,7 @@
 - [Partie 12 — Le frontend React](#p12)
 - [Partie 13 — La dockerisation complète (1 clic)](#p13)
 - [Partie 14 — Les migrations Alembic](#p14)
+- [Partie 15 — Les améliorations métier v2.1](#p15)
 - [Ordre de travail recommandé](#ordre)
 
 ---
@@ -465,6 +466,100 @@ migration qui fait `op.add_column("risk_scores", ...)`.
 
 ---
 
+<a name="p15"></a>
+## Partie 15 — Les améliorations métier v2.1
+
+**Pourquoi** : passer de « j'ai codé une app » à « j'ai résolu des problèmes réels d'une
+banque marocaine ». Quatre chantiers, dans cet ordre.
+
+### 15.1 — Deux nouvelles features temporelles (fractionnement + comptes dormants)
+
+**Le raisonnement d'abord** : certains schémas de fraude sont **invisibles transaction
+par transaction**. Le fractionnement (4 × 9 500 au lieu de 38 000) ne se voit que dans
+le **cumul sur 72h** ; l'usurpation d'un compte dormant ne se voit que dans **la durée
+d'inactivité** avant l'opération.
+
+Étapes (l'ordre a de l'importance — chaque fichier dépend du précédent) :
+1. **`app/ml/features.py`** : ajouter `cumul_72h_over_income` et `days_since_last_tx` à
+   `FEATURE_NAMES` + au dataclass (avec des **valeurs par défaut**, pour ne pas casser
+   les appels existants). Calculer les valeurs dans `extract_features()` (un `SUM` SQL
+   sur 72h, un `MAX(created_at)`) et enrichir `explain_features()`.
+2. **`app/services/scoring_service.py`** : donner un poids aux nouveaux signaux dans le
+   moteur de règles (le repli doit voir les mêmes schémas que le ML).
+3. **`scripts/train_model.py`** : ajouter les profils de fraude « structuring » et
+   « dormant » au générateur, et refléter les poids dans `rules_score_vector`.
+4. **Réentraîner** (`python -m scripts.train_model`) et vérifier `metrics.json` :
+   les métriques doivent rester honnêtes (RF > baseline, jamais parfait).
+5. **Tests** : nouveaux cas dans `test_ml_scoring.py` (les vecteurs jouets passent à
+   7 colonnes).
+
+> ⚠️ **Piège vécu (et leçon majeure)** : générer les features simulées
+> **indépendamment** crée des combinaisons physiquement impossibles (un cumul 72h plus
+> petit que le montant courant, un compte "dormant" avec des opérations dans les 24h).
+> Les vraies transactions — qui respectent forcément ces lois — tombent alors **hors de
+> la distribution apprise** et le modèle devient imprévisible : notre retrait de test à
+> 13x le revenu ne scorait que 49/100 ! La solution : un constructeur `_make_features()`
+> qui **impose les contraintes** (cumul = montant + extra ≥ montant ; inactif ≥ 1 jour ⇒
+> rien sur 24h ; ≥ 3 jours ⇒ rien sur 72h). Après correction : 80/100. Retiens la
+> formule : **la qualité des données prime sur la sophistication du modèle.**
+
+### 15.2 — Le dossier de déclaration de soupçon (PDF LBC-FT)
+
+**Le raisonnement** : la loi 43-05 impose de déclarer les opérations suspectes à l'ANRF.
+Le dossier se constitue à la main en agence → on l'automatise à partir de ce que la
+plateforme sait déjà (KYC, opération, score, SHAP, historique).
+
+1. **`app/services/suspicion_report_service.py`** : composer le PDF (reportlab,
+   `SimpleDocTemplate` + `Table`) section par section : référence, KYC, compte,
+   opération, analyse IA (traduire les noms de features en libellés lisibles par un
+   juriste !), chronologie, cadre légal. Toujours marquer « modèle indicatif ».
+2. **`app/routers/alerts.py`** : endpoint `GET /alerts/{id}/declaration-soupcon.pdf` —
+   rôle directeur, **404** si absente, **409** si l'alerte n'est pas qualifiée
+   `confirmed_fraud` (c'est la décision humaine qui autorise), **trace d'audit**, puis
+   `StreamingResponse` avec `Content-Disposition`.
+3. **Frontend `Fraud.tsx`** : la clôture passe par **deux boutons de qualification**
+   (Fraude confirmée / Faux positif) — sans cela, la boucle de feedback n'est pas
+   actionnable — puis bouton « Générer la déclaration » sur une alerte confirmée
+   (téléchargement axios en `responseType: "blob"`, comme les rapports).
+4. **Tests `test_suspicion_report.py`** : signature `%PDF`, préconditions 409/404,
+   RBAC 403, présence de la trace d'audit.
+
+> ⚠️ **Pièges vécus** : (1) une longue chaîne dans une cellule reportlab **ne se replie
+> pas** → l'envelopper dans un `Paragraph` ; (2) les polices PDF standard (WinAnsi)
+> n'ont pas les glyphes ◀/← → utiliser le tiret cadratin « — ».
+
+### 15.3 — La page « Suivi de la fraude & santé du modèle » (MLOps)
+
+**Le raisonnement** : les fraudeurs s'adaptent, le modèle se dégrade (dérive
+conceptuelle). Le directeur qualifie déjà chaque alerte → ces qualifications SONT la
+vérité terrain : on peut mesurer la performance **réelle** en production.
+
+1. **`app/schemas/analytics.py`** : `ModelHealthResponse` (précision production, taux de
+   faux positifs, feedback disponible, temps de traitement, histogramme, version).
+2. **`app/routers/analytics.py`** : `GET /analytics/model-health` — tout agrégé **côté
+   PostgreSQL** (`COUNT ... FILTER`, `AVG(EXTRACT(EPOCH FROM closed_at - created_at))`,
+   histogramme par `LEAST(FLOOR(score/10)*10, 90)`). Attention aux **divisions par
+   zéro** quand aucune alerte n'est qualifiée (renvoyer `None`).
+3. **Frontend `SanteModele.tsx`** : cartes KPI + histogramme Plotly (tranches ≥ 70 en
+   rouge = zone d'alerte) + carte pédagogique « quand réentraîner » (≥ 50 étiquettes ou
+   précision < 50 %). Route + entrée Sidebar réservées au directeur.
+4. **Tests `test_model_health.py`** : état vide, calculs sur alertes qualifiées, RBAC.
+
+### 15.4 — Boucler la boucle (vérification de bout en bout)
+
+Rejouer le parcours complet en conditions réelles :
+```
+docker compose up -d --build
+→ conseiller : client à petit revenu + rafale de dépôts + gros retrait ailleurs
+→ score ≥ 70 (ml-rf-v2.1) + explication « possible fractionnement » + SHAP
+→ directeur : alerte → prendre en charge → Fraude confirmée
+→ bouton « Générer la déclaration de soupçon » → PDF complet
+→ page Santé du modèle : précision 100 %, feedback 1, histogramme
+→ réentraîner : le feedback devient un exemple d'entraînement
+```
+
+---
+
 <a name="ordre"></a>
 ## Ordre de travail recommandé (résumé)
 
@@ -485,6 +580,8 @@ migration qui fait `op.add_column("risk_scores", ...)`.
 12. Frontend React
 13. Dockerisation complète (1 clic)
 14. Migrations Alembic
+15. Améliorations métier v2.1 (fractionnement, dormants,
+    déclaration de soupçon, santé du modèle)
 ────────── à ce stade : PFE complète ──────────
 ```
 
