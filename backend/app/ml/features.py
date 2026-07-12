@@ -62,15 +62,32 @@ def extract_features(
     amount: Decimal,
     city: str | None,
     moment: datetime | None = None,
+    exclude_tx_id: int | None = None,
 ) -> TransactionFeatures:
-    """Calcule les features AVANT insertion de la transaction analysée
-    (l'historique interrogé ne doit pas contenir l'opération en cours)."""
+    """Calcule les features telles qu'elles étaient AU MOMENT `moment`
+    (point-in-time), l'opération analysée EXCLUE de l'historique.
+
+    Deux modes d'appel :
+      - Scoring live : moment = maintenant, la transaction n'est pas encore
+        insérée — les bornes sont alors sans effet mais restent correctes.
+      - Rejeu (boucle de feedback, backtesting) : moment = date de la
+        transaction DÉJÀ en base -> passer exclude_tx_id=tx.id. Sans ces
+        bornes, l'historique contiendrait l'opération elle-même ET les
+        opérations postérieures : les vecteurs d'entraînement différeraient
+        de ceux vus au scoring (training/serving skew, version temporelle).
+    """
     moment = moment or datetime.now(timezone.utc)
+
+    # Filtres communs : l'historique s'arrête à `moment` et ne contient
+    # jamais l'opération analysée.
+    history = [Transaction.account_id == account.id, Transaction.created_at <= moment]
+    if exclude_tx_id is not None:
+        history.append(Transaction.id != exclude_tx_id)
 
     income = account.client.monthly_income if account.client else None
     amount_over_income = float(amount / income) if income and income > 0 else 0.0
 
-    avg = db.scalar(select(func.avg(Transaction.amount)).where(Transaction.account_id == account.id))
+    avg = db.scalar(select(func.avg(Transaction.amount)).where(*history))
     amount_over_avg = float(amount / avg) if avg and avg > 0 else 0.0
 
     local_hour = moment.astimezone().hour if moment.tzinfo else moment.hour
@@ -80,7 +97,7 @@ def extract_features(
     if city:
         last_city = db.scalar(
             select(Transaction.city)
-            .where(Transaction.account_id == account.id, Transaction.city.is_not(None))
+            .where(*history, Transaction.city.is_not(None))
             .order_by(Transaction.created_at.desc())
             .limit(1)
         )
@@ -90,10 +107,7 @@ def extract_features(
     tx_last_24h = db.scalar(
         select(func.count())
         .select_from(Transaction)
-        .where(
-            Transaction.account_id == account.id,
-            Transaction.created_at >= moment - timedelta(hours=24),
-        )
+        .where(*history, Transaction.created_at >= moment - timedelta(hours=24))
     ) or 0
 
     # Cumul 72h (fractionnement) — la somme INCLUT l'opération courante :
@@ -101,8 +115,7 @@ def extract_features(
     since_72h = moment - timedelta(hours=72)
     sum_72h = db.scalar(
         select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-            Transaction.account_id == account.id,
-            Transaction.created_at >= since_72h,
+            *history, Transaction.created_at >= since_72h
         )
     ) or Decimal(0)
     total_72h = Decimal(sum_72h) + amount
@@ -110,9 +123,7 @@ def extract_features(
 
     # Jours depuis la dernière opération (compte dormant réactivé).
     # Plafonné à 365 : au-delà, l'information n'augmente plus le risque.
-    last_tx_date = db.scalar(
-        select(func.max(Transaction.created_at)).where(Transaction.account_id == account.id)
-    )
+    last_tx_date = db.scalar(select(func.max(Transaction.created_at)).where(*history))
     if last_tx_date is not None:
         m = moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
         lt = last_tx_date if last_tx_date.tzinfo else last_tx_date.replace(tzinfo=timezone.utc)

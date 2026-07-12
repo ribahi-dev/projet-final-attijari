@@ -136,3 +136,53 @@ def test_shap_is_none_without_model():
     assert ml_model.explain_shap(
         TransactionFeatures(amount_over_income=1, amount_over_avg=1, is_night=0, city_changed=0, tx_last_24h=1)
     ) is None
+
+
+def test_extract_features_point_in_time_replay(client, auth_headers, db):
+    """RÉGRESSION (boucle de feedback) : rejouer une transaction DÉJÀ en
+    base avec moment=tx.created_at + exclude_tx_id doit reproduire le
+    vecteur vu au scoring — dont un cumul 72h NON doublé et une dormance
+    non écrasée par la transaction elle-même."""
+    from sqlalchemy import select
+
+    from app.ml.features import extract_features
+    from app.models import Account, RiskScore, Transaction
+
+    headers = auth_headers("advisor")
+    cid = client.post(
+        "/clients", headers=headers,
+        json={"first_name": "Rejeu", "last_name": "Test", "cin": "RJ222222",
+              "monthly_income": "4000"},
+    ).json()["id"]
+    aid = client.post(
+        "/accounts", headers=headers, json={"client_id": cid, "initial_balance": "90000"}
+    ).json()["id"]
+    for _ in range(3):
+        client.post(
+            "/transactions", headers=headers,
+            json={"transaction_type": "deposit", "amount": "1000",
+                  "account_id": aid, "city": "Rabat"},
+        )
+    tx_id = client.post(
+        "/transactions", headers=headers,
+        json={"transaction_type": "withdrawal", "amount": "8000",
+              "account_id": aid, "city": "Agadir"},
+    ).json()["id"]
+
+    tx = db.get(Transaction, tx_id)
+    account = db.get(Account, aid)
+    replayed = extract_features(
+        db, account, tx.amount, tx.city, tx.created_at, exclude_tx_id=tx.id
+    )
+
+    # Cumul 72h = 3 x 1000 (historique) + 8000 (op courante) = 11000 -> 2.75x
+    # le revenu. Sans l'exclusion, l'op serait comptée DEUX fois (4.75x).
+    assert replayed.cumul_72h_over_income == 2.75
+    # La ville précédente est Rabat (l'op elle-même, à Agadir, est exclue).
+    assert replayed.city_changed == 1
+    # 3 opérations dans les 24h précédentes (l'op courante exclue).
+    assert replayed.tx_last_24h == 3
+
+    # Chaque transaction étant scorée, le rejeu a bien un score de référence.
+    persisted = db.scalar(select(RiskScore).where(RiskScore.transaction_id == tx_id))
+    assert persisted is not None

@@ -70,6 +70,11 @@ def _make_features(
         tx_last_24h = 0
     if idle_days >= 3:
         extra_72h_over_income = 0.0
+    # Réciproque : "dernière opération aujourd'hui" (idle=0) implique au
+    # moins une opération dans les 24h. Si le tirage donne tx_24h=0 avec un
+    # cumul antérieur non nul, la dernière opération est en réalité à J-1/J-2.
+    if idle_days == 0 and tx_last_24h == 0 and extra_72h_over_income > 0:
+        idle_days = 1
     return TransactionFeatures(
         amount_over_income=amount_over_income,
         amount_over_avg=amount_over_avg,
@@ -192,7 +197,12 @@ def load_feedback_labels():
                 if tx is None:
                     continue
                 account = db.get(Account, tx.account_id)
-                f = extract_features(db, account, tx.amount, tx.city, tx.created_at)
+                # Rejeu point-in-time : la transaction est DÉJÀ en base, on
+                # l'exclut de son propre historique (sinon dormance=0, cumul
+                # doublé... — le vecteur ne serait pas celui vu au scoring).
+                f = extract_features(
+                    db, account, tx.amount, tx.city, tx.created_at, exclude_tx_id=tx.id
+                )
                 X.append(f.as_vector())
                 y.append(1 if alert.resolution == "confirmed_fraud" else 0)
         return X, y
@@ -289,8 +299,14 @@ def main() -> None:
         "isolation_forest": evaluate(
             "IsolationForest",
             y_test,
-            # score_samples : plus négatif = plus anormal -> normalisation 0-100
-            (lambda s: ((s.max() - s) / (s.max() - s.min()) * 100))(iso.score_samples(X_test)),
+            # score_samples : plus négatif = plus anormal -> normalisation
+            # 0-100 CALIBRÉE SUR LE TRAIN (utiliser min/max du test biaiserait
+            # la comparaison au seuil 70 et n'existe pas en production).
+            (lambda s, lo, hi: np.clip((hi - s) / (hi - lo) * 100, 0, 100))(
+                iso.score_samples(X_test),
+                iso.score_samples(X_train).min(),
+                iso.score_samples(X_train).max(),
+            ),
         ),
         "random_forest": evaluate(
             "RandomForest (retenu)", y_test, rf.predict_proba(X_test)[:, 1] * 100

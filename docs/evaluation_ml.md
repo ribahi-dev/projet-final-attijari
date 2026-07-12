@@ -86,8 +86,8 @@ test (6 000 transactions jamais vues, seuil d'alerte = 70) :
 | Modèle | Précision | Rappel | F1 | AUC-PR |
 |---|---|---|---|---|
 | Règles (baseline) | 0,262 | 0,375 | 0,308 | 0,263 |
-| Isolation Forest | 0,269 | 0,591 | 0,370 | 0,326 |
-| **Random Forest (retenu)** | **0,774** | **0,466** | **0,582** | **0,612** |
+| Isolation Forest | 0,260 | 0,602 | 0,363 | 0,331 |
+| **Random Forest (retenu)** | **0,774** | **0,466** | **0,582** | **0,607** |
 
 > **Lecture** : le Random Forest **surpasse nettement la baseline de règles** (F1 0,58
 > vs 0,31 ; AUC-PR 0,61 vs 0,26). L'écart s'est même **creusé** avec l'ajout des profils
@@ -103,12 +103,12 @@ test (6 000 transactions jamais vues, seuil d'alerte = 70) :
 
 | Feature | Importance |
 |---|---|
-| `cumul_72h_over_income` | **0,318** |
-| `amount_over_avg` | 0,213 |
-| `amount_over_income` | 0,185 |
-| `days_since_last_tx` | 0,100 |
-| `is_night` | 0,098 |
-| `city_changed` | 0,051 |
+| `cumul_72h_over_income` | **0,317** |
+| `amount_over_avg` | 0,211 |
+| `amount_over_income` | 0,188 |
+| `days_since_last_tx` | 0,101 |
+| `is_night` | 0,097 |
+| `city_changed` | 0,052 |
 | `tx_last_24h` | 0,034 |
 
 Résultat marquant : **la nouvelle feature de fractionnement est le signal le plus
