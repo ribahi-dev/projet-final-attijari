@@ -22,10 +22,11 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.models import Account, Alert, Transaction, User
 from app.schemas.transaction import TransactionCreate
-from app.services import audit_service, notification_service, scoring_service
+from app.services import (
+    agency_settings_service, audit_service, notification_service, scoring_service,
+)
 
 
 class BusinessRuleError(Exception):
@@ -84,8 +85,10 @@ def create_transaction(
 
     scoring_service.persist_score(db, transaction, result)
 
+    # Seuil DYNAMIQUE : la valeur décidée par le directeur (table
+    # app_settings) prime sur le défaut du .env — gouvernance métier.
     alert_message: str | None = None
-    if result.score >= settings.risk_alert_threshold:
+    if result.score >= agency_settings_service.get_risk_threshold(db):
         alert_message = (
             f"Score de risque {result.score}/100 sur {data.transaction_type} "
             f"de {amount} MAD (compte {source.account_number}). {result.explanation}"

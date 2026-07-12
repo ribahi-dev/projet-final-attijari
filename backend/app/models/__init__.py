@@ -15,6 +15,7 @@ Ce fichier a DEUX fonctions, pas seulement esthétiques :
 
 from app.models.account import Account
 from app.models.alert import Alert
+from app.models.app_setting import AppSetting
 from app.models.audit_log import AuditLog
 from app.models.client import Client
 from app.models.risk_score import RiskScore
@@ -24,6 +25,7 @@ from app.models.user import User
 __all__ = [
     "Account",
     "Alert",
+    "AppSetting",
     "AuditLog",
     "Client",
     "RiskScore",

@@ -1,6 +1,6 @@
-// Paramètres : profil, thème, notifications Telegram, à propos.
-import { Link2, Moon, Send, Sun } from "lucide-react";
-import { useState } from "react";
+// Paramètres : profil, thème, notifications Telegram, seuil d'alerte, à propos.
+import { Gauge, Link2, Moon, Send, Sun } from "lucide-react";
+import { useEffect, useState } from "react";
 import api, { apiError } from "@/api/client";
 import { PageHeader } from "@/components/layout/AppLayout";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +17,35 @@ export default function Settings() {
   const { toast } = useToast();
   const [linked, setLinked] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Seuil d'alerte (directeur) : la molette de gouvernance de la détection.
+  const [threshold, setThreshold] = useState<number | null>(null);
+  const [overridden, setOverridden] = useState(false);
+  const isDirector = user?.role === "director";
+
+  useEffect(() => {
+    if (!isDirector) return;
+    api.get<{ threshold: number; overridden: boolean }>("/agency-settings/alert-threshold")
+      .then(({ data }) => {
+        setThreshold(data.threshold);
+        setOverridden(data.overridden);
+      });
+  }, [isDirector]);
+
   if (!user) return null;
+
+  async function saveThreshold() {
+    if (threshold === null) return;
+    setBusy(true);
+    try {
+      const { data } = await api.patch("/agency-settings/alert-threshold", { threshold });
+      setOverridden(data.overridden);
+      toast("success", `Seuil d'alerte fixé à ${data.threshold}/100 — décision tracée dans l'audit.`);
+    } catch (err) {
+      toast("error", apiError(err));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function linkTelegram() {
     setBusy(true);
@@ -104,16 +132,48 @@ export default function Settings() {
           )}
         </Card>
 
+        {isDirector && threshold !== null && (
+          <Card className="md:col-span-2">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Gauge size={16} className="text-primary" /> Seuil d'alerte de l'agence
+              </CardTitle>
+              <Badge tone={overridden ? "primary" : "neutral"}>
+                {overridden ? "personnalisé" : "valeur par défaut"}
+              </Badge>
+            </CardHeader>
+            <p className="mb-4 text-sm text-muted-foreground">
+              Une transaction dont le score atteint ce seuil crée une alerte et notifie le
+              directeur. <strong className="text-foreground">Seuil bas</strong> : moins de fraudes
+              ratées, plus de faux positifs. <strong className="text-foreground">Seuil haut</strong> :
+              moins de bruit, plus de risque. Consultez la page « Santé du modèle » pour décider —
+              chaque changement est tracé dans le journal d'audit.
+            </p>
+            <div className="flex flex-wrap items-center gap-4">
+              <input
+                type="range" min={1} max={100} value={threshold}
+                onChange={(e) => setThreshold(Number(e.target.value))}
+                className="h-2 w-64 cursor-pointer appearance-none rounded-full bg-muted accent-[var(--primary)]"
+                aria-label="Seuil d'alerte"
+              />
+              <span className={`w-20 text-2xl font-bold ${threshold >= 85 ? "text-success" : threshold < 50 ? "text-danger" : "text-primary"}`}>
+                {threshold}<span className="text-sm text-muted-foreground">/100</span>
+              </span>
+              <Button onClick={saveThreshold} disabled={busy}>Appliquer le seuil</Button>
+            </div>
+          </Card>
+        )}
+
         <Card className="md:col-span-2">
           <CardHeader><CardTitle>À propos de la plateforme</CardTitle></CardHeader>
           <div className="grid gap-3 text-sm sm:grid-cols-3">
             <div>
               <div className="text-muted-foreground">Version</div>
-              <div className="font-semibold">NovaBank MVP 0.1.0</div>
+              <div className="font-semibold">NovaBank PFE 2.1</div>
             </div>
             <div>
               <div className="text-muted-foreground">Moteur de risque</div>
-              <div className="font-semibold">mvp-rules-v1</div>
+              <div className="font-semibold">ml-rf-v2.1 · repli règles</div>
             </div>
             <div>
               <div className="text-muted-foreground">Sécurité</div>
