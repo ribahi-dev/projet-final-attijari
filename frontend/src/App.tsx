@@ -13,6 +13,7 @@ import Fraud from "@/pages/Fraud";
 import Login from "@/pages/Login";
 import NewTransaction from "@/pages/NewTransaction";
 import Reports from "@/pages/Reports";
+import SanteModele from "@/pages/SanteModele";
 import Settings from "@/pages/Settings";
 import Transactions from "@/pages/Transactions";
 import Users from "@/pages/Users";
@@ -54,6 +55,7 @@ export default function App() {
         <Route path="/operations/nouvelle" element={<Guard roles={["advisor"]}><NewTransaction /></Guard>} />
         <Route path="/dashboard" element={<Guard roles={["director"]}><Dashboard /></Guard>} />
         <Route path="/fraude" element={<Guard roles={["director"]}><Fraud /></Guard>} />
+        <Route path="/sante-modele" element={<Guard roles={["director"]}><SanteModele /></Guard>} />
         <Route path="/rapports" element={<Guard roles={["director"]}><Reports /></Guard>} />
         <Route path="/users" element={<Guard roles={["admin"]}><Users /></Guard>} />
         <Route path="/audit" element={<Guard roles={["admin"]}><Audit /></Guard>} />

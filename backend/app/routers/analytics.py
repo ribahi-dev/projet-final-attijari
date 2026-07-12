@@ -15,7 +15,9 @@ from sqlalchemy.orm import Session
 from app.core.deps import require_role
 from app.db.session import get_db
 from app.models import Account, Alert, Client, RiskScore, Transaction
-from app.schemas.analytics import KpiResponse, TrendPoint, TypeDistribution
+from app.schemas.analytics import (
+    KpiResponse, ModelHealthResponse, ScoreBucket, TrendPoint, TypeDistribution,
+)
 
 router = APIRouter(
     prefix="/analytics",
@@ -64,6 +66,54 @@ def get_trends(db: Annotated[Session, Depends(get_db)], days: int = 30):
         TrendPoint(day=row.day.date(), transaction_count=row.n, total_amount=row.total or ZERO)
         for row in rows
     ]
+
+
+@router.get("/model-health", response_model=ModelHealthResponse)
+def get_model_health(db: Annotated[Session, Depends(get_db)]):
+    """Suivi de la fraude & santé du modèle (MLOps).
+
+    Toutes les métriques sont calculées sur les QUALIFICATIONS HUMAINES
+    (boucle de feedback) : c'est la performance réelle vécue par l'agence,
+    pas celle du jeu de test d'entraînement.
+    """
+    # Décomptes des alertes transactionnelles qualifiées, en UNE requête.
+    confirmed, false_pos = db.execute(
+        select(
+            func.count().filter(Alert.resolution == "confirmed_fraud"),
+            func.count().filter(Alert.resolution == "false_positive"),
+        ).where(Alert.alert_type == "transaction_risk")
+    ).one()
+    processed = confirmed + false_pos
+
+    # Temps moyen de traitement d'une alerte (création -> clôture), en heures.
+    avg_seconds = db.scalar(
+        select(func.avg(func.extract("epoch", Alert.closed_at - Alert.created_at))).where(
+            Alert.closed_at.is_not(None)
+        )
+    )
+
+    # Histogramme des scores par tranche de 10 (le score 100 rejoint la
+    # tranche 90-100 via LEAST) — l'agrégation reste côté PostgreSQL.
+    bucket = func.least(func.floor(RiskScore.score / 10) * 10, 90).label("bucket")
+    rows = db.execute(select(bucket, func.count()).group_by(bucket).order_by(bucket)).all()
+
+    return ModelHealthResponse(
+        model_version=db.scalar(
+            select(RiskScore.model_version).order_by(RiskScore.created_at.desc()).limit(1)
+        ),
+        total_scored=db.scalar(select(func.count()).select_from(RiskScore)),
+        open_alerts=db.scalar(
+            select(func.count()).select_from(Alert).where(Alert.status != "closed")
+        ),
+        alerts_processed=processed,
+        confirmed_fraud=confirmed,
+        false_positives=false_pos,
+        precision_production=confirmed / processed if processed else None,
+        false_positive_rate=false_pos / processed if processed else None,
+        feedback_available=processed,
+        avg_processing_hours=float(avg_seconds) / 3600 if avg_seconds is not None else None,
+        score_distribution=[ScoreBucket(range_start=int(r[0]), count=r[1]) for r in rows],
+    )
 
 
 @router.get("/distribution", response_model=list[TypeDistribution])
