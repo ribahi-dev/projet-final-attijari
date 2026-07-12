@@ -415,6 +415,24 @@ jetée : elle sert de **comparaison chiffrée** et de **secours opérationnel**.
   `routers/alerts.py` (endpoint + préconditions + audit), `Fraud.tsx` (bouton),
   `test_suspicion_report.py` (6 tests).
 
+### 6.3 bis — Fraude interne & seuil configurable (v2.2)
+
+Deux compléments de gouvernance ajoutés après les 4 chantiers :
+
+- **Fraude interne** (`GET /analytics/internal-monitoring`, page `FraudeInterne.tsx`) —
+  l'angle mort classique : on surveille les clients, rarement les employés. Indicateurs
+  par conseiller depuis les transactions ET le journal d'audit (append-only, donc
+  infalsifiable par l'intéressé) : saisies nocturnes (heure de Casablanca via
+  `timezone()` PostgreSQL), volume vs pairs, concentration sur un même compte, part
+  d'opérations à haut risque, échecs de connexion. Drapeaux **explicables**, et le
+  principe reste : *l'outil détecte, l'humain décide*.
+- **Seuil d'alerte configurable** (`app_settings` + `agency_settings_service` +
+  `PATCH /agency-settings/alert-threshold`, carte dans Paramètres) — le seuil devient
+  une décision MÉTIER du directeur, **tracée dans l'audit**, avec repli sur le `.env`.
+  Le test fonctionnel le prouve : le même scénario (score 80) alerte à seuil 70,
+  plus à seuil 90, de nouveau à seuil 75. Table clé/valeur générique : le prochain
+  réglage ne demandera aucune migration.
+
 ### 6.4 — Page « Suivi de la fraude & santé du modèle » (MLOps)
 
 - **Le problème réel** : un modèle de fraude **se dégrade avec le temps** — les fraudeurs

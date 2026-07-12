@@ -148,6 +148,12 @@ testable et évolutif.
   calculée sur les qualifications du directeur, taux de faux positifs, volume de feedback,
   distribution des scores — pour savoir **quand réentraîner** (inspiré du Suivi de la
   fraude de Bank Al-Maghrib).
+- 🕵️ **Fraude interne** — profils d'activité des conseillers calculés depuis les
+  opérations et le journal d'audit (saisies nocturnes, concentration sur un compte,
+  volume vs pairs, part d'opérations risquées) avec drapeaux explicables.
+- ⚙️ **Seuil d'alerte configurable** — le directeur ajuste la sensibilité de la
+  détection depuis l'interface ; chaque changement est tracé dans l'audit
+  (le `.env` ne fournit plus que la valeur par défaut).
 - 📊 **Tableau de bord** — KPI et graphiques Plotly (activité, répartition, risque).
 - 📄 **Rapports** — export des données (CSV/Excel).
 - 📜 **Audit** — journal append-only de toutes les actions sensibles (qui, quoi, quand, IP).
