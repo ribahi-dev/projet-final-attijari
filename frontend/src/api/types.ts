@@ -72,6 +72,26 @@ export interface Alert {
   transaction: Transaction | null;
 }
 
+// Surveillance de la fraude INTERNE : profil d'activité de chaque
+// conseiller, calculé depuis les transactions et le journal d'audit.
+export interface AdvisorActivity {
+  user_id: number;
+  name: string;
+  tx_count: number;
+  total_amount: string;
+  night_count: number;
+  high_risk_count: number;
+  max_ops_same_account: number;
+  failed_logins: number;
+  flags: string[];
+  is_anomalous: boolean;
+}
+
+export interface InternalMonitoring {
+  advisors: AdvisorActivity[];
+  peer_avg_amount: string;
+}
+
 // Suivi de la fraude & santé du modèle (MLOps) : métriques calculées sur
 // les qualifications humaines (boucle de feedback), pas sur le jeu de test.
 export interface ModelHealth {

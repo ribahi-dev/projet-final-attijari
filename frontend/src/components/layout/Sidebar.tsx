@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import {
   ArrowLeftRight, Banknote, Bot, ChevronsLeft, FileBarChart2, HeartPulse,
   LayoutDashboard, Landmark, LogOut, ScrollText, Settings, ShieldAlert,
-  ShieldCheck, Users, Wallet,
+  ShieldCheck, UserSearch, Users, Wallet,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import type { Role } from "@/api/types";
@@ -23,6 +23,7 @@ const MENU: Record<Role, { to: string; label: string; icon: typeof Users }[]> = 
     { to: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
     { to: "/fraude", label: "Détection de fraude", icon: ShieldAlert },
     { to: "/sante-modele", label: "Santé du modèle", icon: HeartPulse },
+    { to: "/fraude-interne", label: "Fraude interne", icon: UserSearch },
     { to: "/clients", label: "Clients", icon: Users },
     { to: "/comptes", label: "Comptes", icon: Wallet },
     { to: "/transactions", label: "Transactions", icon: ArrowLeftRight },

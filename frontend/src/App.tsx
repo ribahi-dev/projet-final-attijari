@@ -10,6 +10,7 @@ import ClientDetail from "@/pages/ClientDetail";
 import Clients from "@/pages/Clients";
 import Dashboard from "@/pages/Dashboard";
 import Fraud from "@/pages/Fraud";
+import FraudeInterne from "@/pages/FraudeInterne";
 import Login from "@/pages/Login";
 import NewTransaction from "@/pages/NewTransaction";
 import Reports from "@/pages/Reports";
@@ -56,6 +57,7 @@ export default function App() {
         <Route path="/dashboard" element={<Guard roles={["director"]}><Dashboard /></Guard>} />
         <Route path="/fraude" element={<Guard roles={["director"]}><Fraud /></Guard>} />
         <Route path="/sante-modele" element={<Guard roles={["director"]}><SanteModele /></Guard>} />
+        <Route path="/fraude-interne" element={<Guard roles={["director"]}><FraudeInterne /></Guard>} />
         <Route path="/rapports" element={<Guard roles={["director"]}><Reports /></Guard>} />
         <Route path="/users" element={<Guard roles={["admin"]}><Users /></Guard>} />
         <Route path="/audit" element={<Guard roles={["admin"]}><Audit /></Guard>} />

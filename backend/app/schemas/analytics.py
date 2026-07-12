@@ -28,6 +28,37 @@ class TypeDistribution(BaseModel):
     total_amount: Decimal
 
 
+class AdvisorActivity(BaseModel):
+    """Le profil d'activité d'UN conseiller, vu par la surveillance interne.
+
+    La fraude interne est un angle mort classique : on surveille les clients,
+    rarement les employés. Or l'essentiel des détournements en agence passe
+    par un poste conseiller (saisies nocturnes, concentration sur un compte
+    complice, volumes anormaux). Les indicateurs sont calculés depuis les
+    transactions ET le journal d'audit — l'employé ne peut pas les effacer.
+    """
+
+    user_id: int
+    name: str
+    tx_count: int
+    total_amount: Decimal
+    night_count: int             # opérations saisies entre 00h et 06h (heure locale)
+    high_risk_count: int         # opérations ayant déclenché un score >= 70
+    max_ops_same_account: int    # concentration maximale sur un même compte
+    failed_logins: int           # échecs de connexion (journal d'audit)
+    # Drapeaux d'anomalie LISIBLES (même exigence d'explicabilité que le
+    # scoring client) — vide si le comportement est normal.
+    flags: list[str]
+    is_anomalous: bool
+
+
+class InternalMonitoringResponse(BaseModel):
+    advisors: list[AdvisorActivity]
+    # Moyenne du volume des pairs : la référence contre laquelle chaque
+    # conseiller est comparé (affichée pour la transparence).
+    peer_avg_amount: Decimal
+
+
 class ScoreBucket(BaseModel):
     """Une tranche de l'histogramme des scores (0-9, 10-19, ..., 90-100)."""
 

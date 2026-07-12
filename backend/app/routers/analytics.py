@@ -14,9 +14,10 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import require_role
 from app.db.session import get_db
-from app.models import Account, Alert, Client, RiskScore, Transaction
+from app.models import Account, Alert, AuditLog, Client, RiskScore, Transaction, User
 from app.schemas.analytics import (
-    KpiResponse, ModelHealthResponse, ScoreBucket, TrendPoint, TypeDistribution,
+    AdvisorActivity, InternalMonitoringResponse, KpiResponse, ModelHealthResponse,
+    ScoreBucket, TrendPoint, TypeDistribution,
 )
 
 router = APIRouter(
@@ -66,6 +67,109 @@ def get_trends(db: Annotated[Session, Depends(get_db)], days: int = 30):
         TrendPoint(day=row.day.date(), transaction_count=row.n, total_amount=row.total or ZERO)
         for row in rows
     ]
+
+
+@router.get("/internal-monitoring", response_model=InternalMonitoringResponse)
+def get_internal_monitoring(db: Annotated[Session, Depends(get_db)]):
+    """Surveillance de la fraude INTERNE : le comportement des conseillers.
+
+    Indicateurs par conseiller, agrégés côté PostgreSQL depuis les
+    transactions et le journal d'audit (append-only : l'employé ne peut pas
+    effacer ses traces). Les anomalies sont des drapeaux EXPLICABLES —
+    ils désignent un comportement à examiner, jamais une culpabilité.
+    """
+    advisors = db.scalars(
+        select(User).where(User.role == "advisor", User.is_active.is_(True))
+    ).all()
+
+    # Volume, nombre et opérations nocturnes par conseiller, en une requête.
+    # timezone('Africa/Casablanca') convertit l'horodatage UTC en heure
+    # locale de l'agence — la même notion de "nuit" que le scoring client.
+    local_hour = func.extract("hour", func.timezone("Africa/Casablanca", Transaction.created_at))
+    activity = {
+        row.uid: row
+        for row in db.execute(
+            select(
+                Transaction.created_by_id.label("uid"),
+                func.count().label("n"),
+                func.coalesce(func.sum(Transaction.amount), ZERO).label("total"),
+                func.count().filter(local_hour < 6).label("night"),
+            ).group_by(Transaction.created_by_id)
+        ).all()
+    }
+
+    # Opérations à haut risque (score >= 70) par conseiller.
+    high_risk = dict(
+        db.execute(
+            select(Transaction.created_by_id, func.count())
+            .join(RiskScore, RiskScore.transaction_id == Transaction.id)
+            .where(RiskScore.score >= 70)
+            .group_by(Transaction.created_by_id)
+        ).all()
+    )
+
+    # Concentration : le nombre maximal d'opérations sur UN même compte.
+    per_account = (
+        select(
+            Transaction.created_by_id.label("uid"),
+            func.count().label("c"),
+        )
+        .group_by(Transaction.created_by_id, Transaction.account_id)
+        .subquery()
+    )
+    concentration = dict(
+        db.execute(
+            select(per_account.c.uid, func.max(per_account.c.c)).group_by(per_account.c.uid)
+        ).all()
+    )
+
+    # Échecs de connexion (journal d'audit).
+    failed = dict(
+        db.execute(
+            select(AuditLog.user_id, func.count())
+            .where(AuditLog.action == "login_failed", AuditLog.user_id.is_not(None))
+            .group_by(AuditLog.user_id)
+        ).all()
+    )
+
+    # Référence des pairs : volume moyen des conseillers ACTIFS (>= 1 op).
+    totals = [Decimal(activity[a.id].total) for a in advisors if a.id in activity]
+    peer_avg = sum(totals) / len(totals) if totals else ZERO
+
+    result: list[AdvisorActivity] = []
+    for a in advisors:
+        row = activity.get(a.id)
+        n = row.n if row else 0
+        total = Decimal(row.total) if row else ZERO
+        night = row.night if row else 0
+        risky = high_risk.get(a.id, 0)
+        concentrated = concentration.get(a.id, 0)
+        fails = failed.get(a.id, 0)
+
+        flags: list[str] = []
+        if night >= 3:
+            flags.append(f"{night} opérations saisies de nuit (00h-06h)")
+        if len(totals) >= 2 and total > 2 * peer_avg:
+            flags.append(
+                f"volume traité {float(total / peer_avg):.1f}x supérieur à la moyenne des pairs"
+            )
+        if concentrated >= 10:
+            flags.append(f"{concentrated} opérations concentrées sur un même compte")
+        if n >= 5 and risky / n >= 0.3:
+            flags.append(f"{risky} opérations à haut risque sur {n} saisies")
+        if fails >= 5:
+            flags.append(f"{fails} échecs de connexion enregistrés")
+
+        result.append(AdvisorActivity(
+            user_id=a.id, name=f"{a.first_name} {a.last_name}",
+            tx_count=n, total_amount=total, night_count=night,
+            high_risk_count=risky, max_ops_same_account=concentrated,
+            failed_logins=fails, flags=flags, is_anomalous=bool(flags),
+        ))
+
+    # Les profils à examiner d'abord, puis par volume décroissant.
+    result.sort(key=lambda r: (not r.is_anomalous, -r.total_amount))
+    return InternalMonitoringResponse(advisors=result, peer_avg_amount=peer_avg)
 
 
 @router.get("/model-health", response_model=ModelHealthResponse)
