@@ -1,6 +1,6 @@
 // Détection de fraude (directeur) : file d'alertes + détail explicable.
 import { motion } from "framer-motion";
-import { ShieldAlert } from "lucide-react";
+import { CheckCircle2, FileText, ShieldAlert, XCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import api, { apiError } from "@/api/client";
 import type { Alert } from "@/api/types";
@@ -42,11 +42,46 @@ export default function Fraud() {
     load();
   }, [load]);
 
-  async function changeStatus(alert: Alert, status: "in_progress" | "closed") {
+  // La clôture d'une alerte transactionnelle EXIGE une qualification
+  // (confirmed_fraud / false_positive) : c'est l'étiquette qui nourrit le
+  // réentraînement du modèle — le cœur de la boucle de feedback.
+  async function changeStatus(
+    alert: Alert,
+    status: "in_progress" | "closed",
+    resolution?: "confirmed_fraud" | "false_positive",
+  ) {
     try {
-      await api.patch(`/alerts/${alert.id}`, { status });
-      toast("success", status === "closed" ? "Alerte clôturée." : "Alerte prise en charge.");
+      await api.patch(`/alerts/${alert.id}`, { status, resolution });
+      toast(
+        "success",
+        status !== "closed"
+          ? "Alerte prise en charge."
+          : resolution === "confirmed_fraud"
+            ? "Alerte clôturée : fraude confirmée. Le modèle apprendra de cette décision."
+            : resolution === "false_positive"
+              ? "Alerte clôturée : faux positif. Le modèle apprendra de cette décision."
+              : "Alerte clôturée.",
+      );
       load();
+    } catch (err) {
+      toast("error", apiError(err));
+    }
+  }
+
+  // Télécharge le dossier de déclaration de soupçon (PDF serveur), via le
+  // client axios pour transmettre le jeton JWT. responseType blob = binaire.
+  async function downloadDeclaration(alert: Alert) {
+    try {
+      const { data } = await api.get(`/alerts/${alert.id}/declaration-soupcon.pdf`, {
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(data as Blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `novabank_declaration_soupcon_ALT${String(alert.id).padStart(6, "0")}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast("success", "Déclaration de soupçon téléchargée.");
     } catch (err) {
       toast("error", apiError(err));
     }
@@ -150,22 +185,53 @@ export default function Fraud() {
               )}
 
               {selected.status !== "closed" ? (
-                <div className="mt-4 flex gap-2">
+                <div className="mt-4 space-y-2">
                   {selected.status === "open" && (
                     <Button variant="secondary" size="sm" onClick={() => changeStatus(selected, "in_progress")}>
                       Prendre en charge
                     </Button>
                   )}
-                  <Button size="sm" onClick={() => changeStatus(selected, "closed")}>
-                    Clôturer l'alerte
-                  </Button>
+                  {selected.alert_type === "transaction_risk" ? (
+                    // Qualification obligatoire : la décision du directeur
+                    // devient une étiquette d'entraînement du modèle.
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="destructive" size="sm"
+                        onClick={() => changeStatus(selected, "closed", "confirmed_fraud")}
+                      >
+                        <CheckCircle2 size={15} /> Fraude confirmée
+                      </Button>
+                      <Button
+                        variant="secondary" size="sm"
+                        onClick={() => changeStatus(selected, "closed", "false_positive")}
+                      >
+                        <XCircle size={15} /> Faux positif
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button size="sm" onClick={() => changeStatus(selected, "closed")}>
+                      Clôturer l'alerte
+                    </Button>
+                  )}
                 </div>
               ) : (
-                selected.closed_at && (
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    Clôturée le {fmtDate(selected.closed_at)} — une alerte clôturée est immuable.
-                  </p>
-                )
+                <div className="mt-3 space-y-3">
+                  {selected.resolution && (
+                    <Badge tone={selected.resolution === "confirmed_fraud" ? "danger" : "success"}>
+                      {selected.resolution === "confirmed_fraud" ? "Fraude confirmée" : "Faux positif"}
+                    </Badge>
+                  )}
+                  {selected.closed_at && (
+                    <p className="text-xs text-muted-foreground">
+                      Clôturée le {fmtDate(selected.closed_at)} — une alerte clôturée est immuable.
+                    </p>
+                  )}
+                  {selected.resolution === "confirmed_fraud" && selected.transaction && (
+                    <Button size="sm" onClick={() => downloadDeclaration(selected)}>
+                      <FileText size={15} /> Générer la déclaration de soupçon
+                    </Button>
+                  )}
+                </div>
               )}
             </motion.div>
           )}

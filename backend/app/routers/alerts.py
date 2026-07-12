@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -15,7 +16,7 @@ from app.core.deps import require_role
 from app.db.session import get_db
 from app.models import Alert, Transaction, User
 from app.schemas.alert import AlertResponse, AlertUpdate
-from app.services import audit_service
+from app.services import audit_service, suspicion_report_service
 
 router = APIRouter(
     prefix="/alerts",
@@ -47,6 +48,49 @@ def get_alert(alert_id: int, db: Annotated[Session, Depends(get_db)]):
     if alert is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alerte introuvable")
     return alert
+
+
+@router.get("/{alert_id}/declaration-soupcon.pdf")
+def suspicion_report_pdf(
+    alert_id: int, request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    director: Annotated[User, Depends(require_role("director"))],
+):
+    """Dossier de déclaration de soupçon (LBC-FT) au format PDF.
+
+    Préconditions métier : l'alerte doit être QUALIFIÉE en fraude confirmée
+    (c'est la décision humaine du directeur qui déclenche l'obligation de
+    déclarer — jamais le score seul). 404 si l'alerte n'existe pas, 409 si
+    elle n'est pas encore qualifiée confirmed_fraud.
+    """
+    alert = db.scalar(select(Alert).options(_load_detail).where(Alert.id == alert_id))
+    if alert is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alerte introuvable")
+    if alert.resolution != "confirmed_fraud" or alert.transaction is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="La déclaration exige une alerte transactionnelle qualifiée en fraude confirmée",
+        )
+
+    content = suspicion_report_service.generate_suspicion_report_pdf(db, alert)
+
+    # Trace d'audit : l'édition d'un dossier réglementaire est un événement
+    # sensible — on journalise QUI l'a produit, QUAND, pour QUELLE alerte.
+    audit_service.log_action(
+        db, "suspicion_report_generated", user_id=director.id, entity_type="alert",
+        entity_id=alert.id, ip_address=request.client.host if request.client else None,
+        details=f"déclaration de soupçon PDF générée (transaction {alert.transaction_id})",
+    )
+    db.commit()
+
+    return StreamingResponse(
+        iter([content]),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition":
+                f'attachment; filename="novabank_declaration_soupcon_ALT{alert.id:06d}.pdf"'
+        },
+    )
 
 
 @router.patch("/{alert_id}", response_model=AlertResponse)

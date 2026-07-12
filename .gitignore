@@ -35,3 +35,6 @@ ml_artifacts/
 # Build Vite
 frontend/dist/
 
+
+# Document de travail de session (ne pas versionner)
+HANDOFF.md

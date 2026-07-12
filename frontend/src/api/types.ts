@@ -63,10 +63,29 @@ export interface Alert {
   level: "low" | "medium" | "high" | "critical";
   message: string;
   status: "open" | "in_progress" | "closed";
+  // Qualification du directeur à la clôture — c'est l'étiquette qui
+  // alimente le réentraînement du modèle (boucle de feedback).
+  resolution: "confirmed_fraud" | "false_positive" | null;
   transaction_id: number | null;
   created_at: string;
   closed_at: string | null;
   transaction: Transaction | null;
+}
+
+// Suivi de la fraude & santé du modèle (MLOps) : métriques calculées sur
+// les qualifications humaines (boucle de feedback), pas sur le jeu de test.
+export interface ModelHealth {
+  model_version: string | null;
+  total_scored: number;
+  open_alerts: number;
+  alerts_processed: number;
+  confirmed_fraud: number;
+  false_positives: number;
+  precision_production: number | null;
+  false_positive_rate: number | null;
+  feedback_available: number;
+  avg_processing_hours: number | null;
+  score_distribution: { range_start: number; count: number }[];
 }
 
 export interface Kpi {
