@@ -29,10 +29,20 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "  Construction et demarrage des services..."
-echo "  (la premiere fois : 2 a 4 minutes)"
+# On n'utilise PAS --build : Docker construit les images si elles manquent
+# (1ere fois, internet requis) puis les REUTILISE (aucun acces reseau) ->
+# demarrage fiable meme hors-ligne. Pour reconstruire apres une modif du
+# code, utiliser "./reconstruire.sh".
+echo "  Demarrage des services..."
+echo "  1ere fois : construction (internet requis, 2 a 5 min)."
+echo "  Ensuite   : demarrage instantane, meme sans internet."
 echo ""
-docker compose up -d --build
+if ! docker compose up -d; then
+  echo ""
+  echo "  [INFO] Echec (telechargement d'image interrompu ?). Nouvelle tentative..."
+  sleep 8
+  docker compose up -d
+fi
 
 echo ""
 echo "  Initialisation de la base et des donnees de demo..."

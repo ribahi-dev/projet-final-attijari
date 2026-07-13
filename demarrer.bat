@@ -42,12 +42,25 @@ goto wait_docker
 
 :start_stack
 echo.
-echo   Construction et demarrage des services...
-echo   (la premiere fois, cela peut prendre 2 a 4 minutes)
+echo   Demarrage des services...
+echo   1ere fois : construction (connexion internet requise, 2 a 5 min).
+echo   Ensuite   : demarrage instantane, meme SANS internet.
 echo.
-docker compose up -d --build
+REM On n'utilise PAS --build : Docker construit les images si elles manquent,
+REM puis les REUTILISE (aucun acces reseau). C'est ce qui rend la demo fiable
+REM meme avec une connexion lente. Pour reconstruire apres une modif du code,
+REM utiliser "reconstruire.bat".
+docker compose up -d
+if %errorlevel% equ 0 goto services_ok
+
+echo.
+echo   [INFO] Echec (souvent un telechargement d'image de base interrompu).
+echo   Nouvelle tentative dans 8 secondes...
+timeout /t 8 /nobreak >nul
+docker compose up -d
 if %errorlevel% neq 0 goto compose_failed
 
+:services_ok
 echo.
 echo   Initialisation de la base de donnees et des donnees de demo...
 timeout /t 12 /nobreak >nul
@@ -92,8 +105,16 @@ exit /b 1
 :compose_failed
 echo.
 echo   [ERREUR] Le demarrage des services a echoue.
-echo   Verifie que Docker Desktop est bien demarre, puis relance ce script.
-echo   Les messages ci-dessus indiquent la cause precise.
+echo.
+echo   Cause la plus frequente : la 1ere construction n'a pas pu TELECHARGER
+echo   les images de base (node, nginx) depuis Docker Hub -- un probleme de
+echo   CONNEXION, pas du projet.
+echo.
+echo   Que faire :
+echo     1) Verifie ta connexion internet (le 1er lancement en a besoin).
+echo     2) Relance ce script : le telechargement reprend ou il s'est arrete.
+echo     3) Une fois construites, les images restent en cache : les lancements
+echo        suivants marchent en quelques secondes, meme hors-ligne.
 echo.
 pause
 exit /b 1

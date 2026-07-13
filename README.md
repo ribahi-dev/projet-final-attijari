@@ -26,12 +26,20 @@ Encadrante : Raiss Bouchra
 |---|---|
 | **Windows** | Double-cliquer sur **`demarrer.bat`** |
 | **macOS / Linux** | Exécuter **`./demarrer.sh`** dans un terminal |
-| **N'importe où** | Taper **`docker compose up -d --build`** |
+| **N'importe où** | Taper **`docker compose up -d`** |
 
-Le script construit et démarre **toute la plateforme** (base de données + backend +
-frontend), crée les tables et injecte les données de démonstration **automatiquement**.
+Le script démarre **toute la plateforme** (base de données + backend + frontend), crée les
+tables et injecte les données de démonstration **automatiquement**.
 
-Au bout de ~1 minute (2–4 min la première fois), l'application est prête :
+> ⚡ **1ᵉ lancement** : construction des images — **connexion internet requise** (2–5 min,
+> pour télécharger les images de base Docker). **Lancements suivants** : les images sont
+> réutilisées → démarrage en **quelques secondes, même hors-ligne**. Idéal pour une démo :
+> lance-le une fois chez toi avec internet, ensuite tout démarre en local le jour J.
+>
+> As-tu modifié le code ? Utilise **`reconstruire.bat`** (Windows) ou **`./reconstruire.sh`**
+> pour forcer la reconstruction des images.
+
+Au bout de ~1 minute (2–5 min la première fois), l'application est prête :
 
 | Adresse | Contenu |
 |---|---|
