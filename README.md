@@ -10,7 +10,7 @@ boucle de feedback, centre d'alertes, tableau de bord analytique et cybersécuri
 > 🎓 **Version PFE** — cette version enrichit le MVP d'un véritable modèle de Machine
 > Learning entraîné et évalué, d'une boucle de feedback humain et de migrations Alembic.
 
-Projet de stage — El Mehdi Ribahi · Adam El Mansour · Malak Harf-ezzine
+Projet de stage — El Mehdi Ribahi 
 Encadrante : Raiss Bouchra
 
 </div>
