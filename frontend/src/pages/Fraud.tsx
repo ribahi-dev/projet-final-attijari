@@ -1,7 +1,7 @@
 // Détection de fraude (directeur) : file d'alertes + détail explicable.
 import { motion } from "framer-motion";
 import { CheckCircle2, FileText, ShieldAlert, XCircle } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import api, { apiError } from "@/api/client";
 import type { Alert } from "@/api/types";
 import { PageHeader } from "@/components/layout/AppLayout";
@@ -30,6 +30,16 @@ export default function Fraud() {
   const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("open");
   const [alerts, setAlerts] = useState<Alert[] | null>(null);
   const [selected, setSelected] = useState<Alert | null>(null);
+  // Sur mobile, le détail est SOUS la liste : on y amène le directeur
+  // automatiquement à la sélection, pour qu'il décide sans chercher.
+  const detailRef = useRef<HTMLDivElement>(null);
+
+  function selectAlert(a: Alert) {
+    setSelected(a);
+    if (window.matchMedia("(max-width: 1279px)").matches) {
+      requestAnimationFrame(() => detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
+  }
 
   const load = useCallback(async () => {
     setAlerts(null);
@@ -122,7 +132,7 @@ export default function Fraud() {
                   <Tr
                     key={a.id}
                     clickable
-                    onClick={() => setSelected(a)}
+                    onClick={() => selectAlert(a)}
                     className={selected?.id === a.id ? "bg-primary-soft/70" : ""}
                   >
                     <Td className="text-muted-foreground">{fmtDate(a.created_at)}</Td>
@@ -137,7 +147,7 @@ export default function Fraud() {
           {alerts?.length === 0 && <EmptyState>Aucune alerte dans cette catégorie.</EmptyState>}
         </Card>
 
-        <Card glass className="xl:col-span-2 self-start">
+        <Card glass ref={detailRef} className="scroll-mt-4 xl:col-span-2 xl:self-start">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <ShieldAlert size={17} className="text-danger" /> Détail de l'alerte
@@ -187,25 +197,28 @@ export default function Fraud() {
               {selected.status !== "closed" ? (
                 <div className="mt-4 space-y-2">
                   {selected.status === "open" && (
-                    <Button variant="secondary" size="sm" onClick={() => changeStatus(selected, "in_progress")}>
+                    <Button variant="secondary" className="h-11 w-full sm:h-9 sm:w-auto" onClick={() => changeStatus(selected, "in_progress")}>
                       Prendre en charge
                     </Button>
                   )}
                   {selected.alert_type === "transaction_risk" ? (
                     // Qualification obligatoire : la décision du directeur
                     // devient une étiquette d'entraînement du modèle.
-                    <div className="flex flex-wrap gap-2">
+                    // Boutons pleine largeur au pouce sur mobile (décision rapide).
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <Button
-                        variant="destructive" size="sm"
+                        variant="destructive"
+                        className="h-11 sm:h-9"
                         onClick={() => changeStatus(selected, "closed", "confirmed_fraud")}
                       >
-                        <CheckCircle2 size={15} /> Fraude confirmée
+                        <CheckCircle2 size={16} /> Fraude confirmée
                       </Button>
                       <Button
-                        variant="secondary" size="sm"
+                        variant="secondary"
+                        className="h-11 sm:h-9"
                         onClick={() => changeStatus(selected, "closed", "false_positive")}
                       >
-                        <XCircle size={15} /> Faux positif
+                        <XCircle size={16} /> Faux positif
                       </Button>
                     </div>
                   ) : (
@@ -227,7 +240,7 @@ export default function Fraud() {
                     </p>
                   )}
                   {selected.resolution === "confirmed_fraud" && selected.transaction && (
-                    <Button size="sm" onClick={() => downloadDeclaration(selected)}>
+                    <Button className="h-11 w-full sm:h-9 sm:w-auto" onClick={() => downloadDeclaration(selected)}>
                       <FileText size={15} /> Générer la déclaration de soupçon
                     </Button>
                   )}

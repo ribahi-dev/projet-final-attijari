@@ -157,7 +157,12 @@ testable et évolutif.
 - 📊 **Tableau de bord** — KPI et graphiques Plotly (activité, répartition, risque).
 - 📄 **Rapports** — export des données (CSV/Excel).
 - 📜 **Audit** — journal append-only de toutes les actions sensibles (qui, quoi, quand, IP).
-- 🌗 **Interface premium** — mode clair/sombre, responsive, glassmorphism.
+- 📱 **Version mobile installable (PWA)** — l'application s'installe sur le téléphone du
+  directeur (icône sur l'écran d'accueil, plein écran) : navigation par barre basse,
+  page de fraude optimisée pour la décision au pouce (détail auto-centré, gros boutons
+  de qualification). Le service worker ne met jamais l'API en cache — données toujours
+  fraîches et authentifiées.
+- 🌗 **Interface premium** — mode clair/sombre, responsive (mobile → desktop), glassmorphism.
 
 ---
 

@@ -2,39 +2,13 @@
 // anthracite avec accents orange — l'identité de la plateforme.
 import { motion } from "framer-motion";
 import {
-  ArrowLeftRight, Banknote, Bot, ChevronsLeft, FileBarChart2, HeartPulse,
-  LayoutDashboard, Landmark, LogOut, ScrollText, Settings, ShieldAlert,
-  ShieldCheck, UserSearch, Users, Wallet,
+  ChevronsLeft, Landmark, LogOut, Settings,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import type { Role } from "@/api/types";
 import { ROLE_LABEL, useAuth } from "@/contexts/AuthContext";
+import { MENU } from "./menu";
 import { cn } from "@/lib/utils";
-
-const MENU: Record<Role, { to: string; label: string; icon: typeof Users }[]> = {
-  advisor: [
-    { to: "/clients", label: "Clients", icon: Users },
-    { to: "/comptes", label: "Comptes", icon: Wallet },
-    { to: "/operations/nouvelle", label: "Nouvelle opération", icon: Banknote },
-    { to: "/transactions", label: "Transactions", icon: ArrowLeftRight },
-    { to: "/assistant", label: "Assistant IA", icon: Bot },
-  ],
-  director: [
-    { to: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
-    { to: "/fraude", label: "Détection de fraude", icon: ShieldAlert },
-    { to: "/sante-modele", label: "Santé du modèle", icon: HeartPulse },
-    { to: "/fraude-interne", label: "Fraude interne", icon: UserSearch },
-    { to: "/clients", label: "Clients", icon: Users },
-    { to: "/comptes", label: "Comptes", icon: Wallet },
-    { to: "/transactions", label: "Transactions", icon: ArrowLeftRight },
-    { to: "/rapports", label: "Rapports", icon: FileBarChart2 },
-    { to: "/assistant", label: "Assistant IA", icon: Bot },
-  ],
-  admin: [
-    { to: "/users", label: "Utilisateurs", icon: ShieldCheck },
-    { to: "/audit", label: "Journal d'audit", icon: ScrollText },
-  ],
-};
 
 interface SidebarProps {
   collapsed: boolean;
@@ -45,13 +19,13 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const { user, logout } = useAuth();
   if (!user) return null;
 
-  const items = [...MENU[user.role], { to: "/parametres", label: "Paramètres", icon: Settings }];
+  const items = [...MENU[user.role as Role], { to: "/parametres", label: "Paramètres", icon: Settings }];
 
   return (
     <motion.aside
       animate={{ width: collapsed ? 76 : 248 }}
       transition={{ type: "spring", stiffness: 300, damping: 32 }}
-      className="fixed inset-y-0 left-0 z-40 flex flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
+      className="fixed inset-y-0 left-0 z-40 hidden flex-col overflow-hidden bg-sidebar text-sidebar-foreground lg:flex"
     >
       {/* Marque */}
       <div className="flex h-16 items-center gap-2.5 border-b border-white/8 px-4">

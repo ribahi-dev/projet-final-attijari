@@ -1,0 +1,17 @@
+{
+  "name": "NovaBank — Aide à la décision",
+  "short_name": "NovaBank",
+  "description": "Détection de fraude et traitement des alertes en mobilité.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#12100d",
+  "theme_color": "#F08100",
+  "lang": "fr",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
