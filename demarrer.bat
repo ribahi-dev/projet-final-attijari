@@ -42,6 +42,15 @@ goto wait_docker
 
 :start_stack
 echo.
+echo   Preparation (reseau propre, liberation des ports)...
+REM Repartir d'un reseau Docker propre pour CE projet : repare l'etat laisse
+REM par un lancement precedent interrompu (sinon l'API ne joint plus "postgres").
+docker compose down --remove-orphans >nul 2>&1
+REM Si une AUTRE copie de NovaBank (lancee depuis un autre dossier) occupe
+REM encore les ports 5433/8000/8090, l'arreter -> evite "port already allocated".
+for /f %%c in ('docker ps -q --filter "publish=8090" --filter "publish=8000" --filter "publish=5433" 2^>nul') do docker stop %%c >nul 2>&1
+
+echo.
 echo   Demarrage des services...
 echo   1ere fois : construction (connexion internet requise, 2 a 5 min).
 echo   Ensuite   : demarrage instantane, meme SANS internet.

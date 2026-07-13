@@ -26,6 +26,9 @@ if %errorlevel% neq 0 (
 
 echo   Reconstruction (connexion internet requise)...
 echo.
+REM Reseau propre + liberation des ports (cf. demarrer.bat) avant de rebatir.
+docker compose down --remove-orphans >nul 2>&1
+for /f %%c in ('docker ps -q --filter "publish=8090" --filter "publish=8000" --filter "publish=5433" 2^>nul') do docker stop %%c >nul 2>&1
 docker compose up -d --build
 if %errorlevel% equ 0 goto ok
 

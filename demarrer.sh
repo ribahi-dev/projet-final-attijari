@@ -29,6 +29,15 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
+# Preparation : repartir d'un reseau Docker propre pour CE projet (repare
+# l'etat laisse par un lancement precedent interrompu) et liberer les ports
+# si une AUTRE copie de NovaBank tourne encore ailleurs.
+echo "  Preparation (reseau propre, liberation des ports)..."
+docker compose down --remove-orphans >/dev/null 2>&1 || true
+for c in $(docker ps -q --filter "publish=8090" --filter "publish=8000" --filter "publish=5433" 2>/dev/null); do
+  docker stop "$c" >/dev/null 2>&1 || true
+done
+
 # On n'utilise PAS --build : Docker construit les images si elles manquent
 # (1ere fois, internet requis) puis les REUTILISE (aucun acces reseau) ->
 # demarrage fiable meme hors-ligne. Pour reconstruire apres une modif du

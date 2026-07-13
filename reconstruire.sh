@@ -21,6 +21,11 @@ fi
 
 echo "  Reconstruction (connexion internet requise)..."
 echo ""
+# Reseau propre + liberation des ports (cf. demarrer.sh) avant de rebatir.
+docker compose down --remove-orphans >/dev/null 2>&1 || true
+for c in $(docker ps -q --filter "publish=8090" --filter "publish=8000" --filter "publish=5433" 2>/dev/null); do
+  docker stop "$c" >/dev/null 2>&1 || true
+done
 if ! docker compose up -d --build; then
   echo ""
   echo "  [INFO] Echec (telechargement d'image interrompu ?). Nouvelle tentative..."
