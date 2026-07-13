@@ -134,7 +134,8 @@ NovaBank/
 │   └── Dockerfile          Recette de l'image (ENTRAÎNE LE MODÈLE au build ⭐)
 │
 └── frontend/               L'interface (ce que l'on voit)
-    ├── index.html          Page HTML de base
+    ├── index.html          Page HTML de base (+ balises PWA)
+    ├── public/             Fichiers PWA : manifest, service worker, icônes
     ├── src/
     │   ├── main.tsx        Point d'entrée : monte l'application React
     │   ├── App.tsx         Le routage (quelle page pour quelle URL + gardes de rôle)
@@ -452,6 +453,35 @@ Deux compléments de gouvernance ajoutés après les 4 chantiers :
   `FILTER`, `date_trunc`, `LEAST/FLOOR` pour l'histogramme), `schemas/analytics.py`
   (`ModelHealthResponse`), `pages/SanteModele.tsx` (KPI + Plotly), `test_model_health.py`.
 
+### 6.5 — Version mobile installable (PWA) — décision en mobilité (v2.3)
+
+- **Le problème réel** : une alerte de fraude que le directeur ne voit qu'en revenant à
+  son bureau, c'est du temps perdu — l'argent est déjà parti. Il doit pouvoir **consulter
+  et qualifier depuis son téléphone**.
+- **La solution** : transformer l'application React existante en **PWA installable** (pas
+  d'application native — hors périmètre du stage, et inutile) :
+  - **Installable** : `public/manifest.webmanifest` (nom, icônes, couleurs, `display:
+    standalone`) + `public/sw.js` (service worker) + balises dans `index.html`. Le
+    directeur ajoute NovaBank à son écran d'accueil ; elle s'ouvre en plein écran comme
+    une vraie app.
+  - **Sécurité — le point à défendre** : le service worker met en cache la **coquille de
+    l'app** (JS/CSS/icônes) mais **JAMAIS les réponses de `/api`** — une plateforme
+    bancaire doit toujours afficher des données fraîches et authentifiées. Un cache
+    d'alertes périmées serait dangereux.
+  - **Navigation adaptée** : sur mobile la barre latérale disparaît au profit d'une
+    **barre d'onglets en bas** (`components/layout/BottomNav.tsx`), atteignable au pouce ;
+    pour le directeur, **« Fraude » est en première position** (priorité métier), + 3
+    raccourcis + une feuille « Plus ». Le menu est factorisé dans
+    `components/layout/menu.ts` (source unique partagée sidebar desktop / bottom nav).
+  - **Page Fraude tactile** : sélectionner une alerte **fait défiler automatiquement**
+    vers son détail ; les boutons de qualification passent en **pleine largeur, 44 px**
+    (la cible tactile de référence).
+- **Où c'est codé** : `public/` (manifest, sw.js, icônes), `index.html` (balises PWA),
+  `main.tsx` (enregistrement du SW en production uniquement), `components/layout/`
+  (`AppLayout.tsx` marge conditionnelle via `matchMedia`, `Sidebar.tsx` en `hidden
+  lg:flex`, `BottomNav.tsx`, `menu.ts`), `pages/Fraud.tsx` (auto-scroll + boutons 44 px),
+  `nginx.conf` (type MIME du manifest, pas de cache sur le SW).
+
 ---
 
 <a name="7-frontend"></a>
@@ -484,27 +514,30 @@ Deux compléments de gouvernance ajoutés après les 4 chantiers :
 
 - **`ui/`** — briques de base style *shadcn/ui* : `button`, `card`, `input`, `badge`,
   `table`, `dialog`, `skeleton`. Écrites une fois, utilisées partout.
-- **`layout/`** — `Sidebar` (menu par rôle, animé), `Navbar`, `AppLayout`.
+- **`layout/`** — `Sidebar` (desktop, `hidden lg:flex`), **`BottomNav`** (mobile, barre
+  d'onglets basse), `Navbar`, `AppLayout` (bascule desktop/mobile), **`menu.ts`** (le menu
+  par rôle, **source unique** partagée sidebar + bottom nav).
 - **`shared/`** — métier : `KpiCard`, `ScoreBadge` (la couleur EST l'information),
   `Plot` (Plotly avec thème partagé), **`ShapChart`** (les barres bidirectionnelles
   SHAP : à droite orange = pousse vers la fraude, à gauche = vers le normal).
 
-### 7.5 — Les pages (`src/pages/`) — 14 écrans
+### 7.5 — Les pages (`src/pages/`) — 15 écrans
 
 | Fichier | Écran |
 |---|---|
-| **`Login.tsx`** | Connexion (dégradé de marque + carte en verre). |
+| **`Login.tsx`** ⭐ | Connexion **3D immersive** : carte inclinable suivant la souris, profondeur réelle, reflet dynamique, aurora animée. |
 | **`Dashboard.tsx`** | Tableau de bord directeur (KPI + graphiques Plotly). |
 | **`Clients.tsx`** / **`ClientDetail.tsx`** | Liste/recherche / fiche détaillée. |
 | **`Accounts.tsx`** | Gestion des comptes (filtres, blocage). |
 | **`NewTransaction.tsx`** | Saisie d'opération avec **score + SHAP en temps réel** ⭐. |
 | **`Transactions.tsx`** | Historique filtrable. |
-| **`Fraud.tsx`** | Centre d'alertes : détail explicable (SHAP), **qualification obligatoire à la clôture** (Fraude confirmée / Faux positif) ⭐, **bouton « Générer la déclaration de soupçon »** sur une fraude confirmée. |
-| **`SanteModele.tsx`** ⭐v2.1 | Suivi de la fraude & santé du modèle : KPI MLOps + histogramme des scores + pédagogie « quand réentraîner ». |
+| **`Fraud.tsx`** | Centre d'alertes : détail explicable (SHAP), **qualification obligatoire à la clôture** (Fraude confirmée / Faux positif) ⭐, **bouton « Générer la déclaration de soupçon »**, **optimisée mobile** (auto-scroll + gros boutons tactiles). |
+| **`SanteModele.tsx`** ⭐ | Suivi de la fraude & santé du modèle : KPI MLOps + histogramme des scores + pédagogie « quand réentraîner ». |
+| **`FraudeInterne.tsx`** ⭐ | Surveillance des conseillers : profils d'activité + drapeaux explicables (fraude interne). |
 | **`Reports.tsx`** | Exports PDF/Excel serveur + CSV client. |
 | **`Assistant.tsx`** | Assistant qui répond avec les vraies données de l'API. |
 | **`Users.tsx`** / **`Audit.tsx`** | Gestion des utilisateurs (+ contacts Telegram) / journal d'audit. |
-| **`Settings.tsx`** | Profil, thème, **liaison Telegram en 1 clic** + bouton test. |
+| **`Settings.tsx`** | Profil, thème, **liaison Telegram en 1 clic**, **curseur du seuil d'alerte** (directeur). |
 
 ### 7.6 — Utilitaires et style
 

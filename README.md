@@ -204,10 +204,12 @@ npm run dev                       # http://localhost:5173
 
 | Document | Contenu |
 |---|---|
-| [docs/GUIDE_COMPLET.md](docs/GUIDE_COMPLET.md) | Guide fichier par fichier + questions du jury |
-| [docs/evaluation_ml.md](docs/evaluation_ml.md) | Méthodologie et métriques du module IA (version PFE) |
+| **[docs/GUIDE_COMPLET.md](docs/GUIDE_COMPLET.md)** | ⭐ **Comprendre tout le projet** : chaque fichier, le module IA en détail, les améliorations métier (pourquoi + comment + où), 18 concepts clés, glossaire, questions du jury. **Commence ici.** |
+| **[docs/GUIDE_CONSTRUCTION.md](docs/GUIDE_CONSTRUCTION.md)** | ⭐ **Reconstruire le projet de zéro**, en 16 parties ordonnées (base → sécurité → services → IA → frontend → Docker → améliorations → mobile), avec les pièges vécus. |
+| [docs/evaluation_ml.md](docs/evaluation_ml.md) | Méthodologie et métriques du module IA (7 features, SHAP, feedback, leçons ML) |
+| [docs/notifications.md](docs/notifications.md) | Le système de notifications Telegram/email |
 | [docs/plan_directeur.md](docs/plan_directeur.md) | Vision finale et étapes de réalisation |
-| [docs/base_de_donnees.md](docs/base_de_donnees.md) | Modèle de données du MVP |
+| [docs/base_de_donnees.md](docs/base_de_donnees.md) | Modèle de données |
 | [docs/schema_cible.sql](docs/schema_cible.sql) | Architecture PostgreSQL « grande échelle » (partitionnement, RLS, triggers) documentée pour l'évolution |
 
 Chaque fichier de code contient un en-tête expliquant **son rôle, le problème qu'il

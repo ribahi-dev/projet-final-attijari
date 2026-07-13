@@ -25,6 +25,7 @@
 - [Partie 13 — La dockerisation complète (1 clic)](#p13)
 - [Partie 14 — Les migrations Alembic](#p14)
 - [Partie 15 — Les améliorations métier v2.1](#p15)
+- [Partie 16 — La version mobile (PWA)](#p16)
 - [Ordre de travail recommandé](#ordre)
 
 ---
@@ -560,6 +561,44 @@ docker compose up -d --build
 
 ---
 
+<a name="p16"></a>
+## Partie 16 — La version mobile (PWA)
+
+**Pourquoi** : permettre au directeur de traiter les alertes depuis son téléphone. On
+**ne fait PAS d'application native** (hors périmètre, et inutile) : on transforme
+l'application React existante en **PWA installable**.
+
+1. **Rendre l'app installable.** Crée `frontend/public/manifest.webmanifest` (nom, icônes
+   192/512, `theme_color`, `display: standalone`) et des icônes (un simple carré orange
+   avec un « N » suffit). Ajoute dans `index.html` : `<link rel="manifest">`,
+   `<meta name="theme-color">`, les balises `apple-mobile-web-app-*`.
+2. **Le service worker** (`frontend/public/sw.js`) : mets en cache la **coquille** de
+   l'app (index.html, JS, CSS, icônes) pour l'ouverture hors ligne, mais **laisse passer
+   toute requête `/api` vers le réseau** — on ne met JAMAIS en cache des données
+   bancaires (elles doivent être fraîches et authentifiées). Enregistre-le dans
+   `main.tsx`, **en production uniquement** (`import.meta.env.PROD`), sinon il gêne le
+   rechargement à chaud de Vite.
+3. **Le layout responsive.** Factorise le menu par rôle dans `components/layout/menu.ts`
+   (source unique). Rends la `Sidebar` `hidden lg:flex` (masquée sur mobile). Crée
+   `BottomNav.tsx` : une barre d'onglets basse (`lg:hidden`) avec les 4 destinations
+   prioritaires du rôle + un bouton « Plus ». Dans `AppLayout`, applique la marge latérale
+   **seulement sur desktop** (via `window.matchMedia("(min-width: 1024px)")`) et ajoute un
+   `pb-24` mobile pour ne pas masquer le contenu sous la barre.
+4. **La page de décision.** Sur `Fraud.tsx`, quand une alerte est sélectionnée sur mobile,
+   fais un `scrollIntoView` vers le panneau détail (passe la `Card` en `forwardRef`) et
+   agrandis les boutons de qualification (`h-11`, pleine largeur) — la cible tactile de
+   référence est 44 px.
+5. **nginx** (`frontend/nginx.conf`) : sers le manifest avec le bon type
+   (`application/manifest+json`) et interdis le cache du service worker (`Cache-Control:
+   no-cache`), sinon une nouvelle version ne serait jamais récupérée.
+
+> **Vérification** : ouvre l'app dans Chrome, F12 → mode mobile (Ctrl+Shift+M) : la barre
+> du bas apparaît, aucun débordement horizontal. Depuis un vrai téléphone sur le même
+> Wi-Fi : `http://<ip-du-pc>:8090` (ouvre le port 8090 dans le pare-feu Windows), puis
+> menu du navigateur → « Installer / Ajouter à l'écran d'accueil ».
+
+---
+
 <a name="ordre"></a>
 ## Ordre de travail recommandé (résumé)
 
@@ -582,6 +621,7 @@ docker compose up -d --build
 14. Migrations Alembic
 15. Améliorations métier v2.1 (fractionnement, dormants,
     déclaration de soupçon, santé du modèle)
+16. Version mobile (PWA installable + navigation adaptée)
 ────────── à ce stade : PFE complète ──────────
 ```
 
