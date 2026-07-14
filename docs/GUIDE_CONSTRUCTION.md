@@ -209,7 +209,7 @@ python -m scripts.create_tables
 ```bash
 docker exec <conteneur_postgres> psql -U postgres -d novabank -c "\dt"
 ```
-→ doit lister les 7 tables.
+→ doit lister les 8 tables.
 
 ---
 

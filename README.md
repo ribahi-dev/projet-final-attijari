@@ -90,7 +90,7 @@ inhabituelle. »*
 │   Frontend React   │  + JWT    │      Backend FastAPI     │ ──────► │  PostgreSQL  │
 │  (nginx, port 8090)│ ────────► │      (port 8000)         │         │  (port 5433) │
 │                    │  /api/... │                          │         │              │
-│  Login, Dashboard, │           │  routers  (HTTP)         │         │  7 tables    │
+│  Login, Dashboard, │           │  routers  (HTTP)         │         │  8 tables    │
 │  Clients, Comptes, │           │  services (métier)       │         │  contraintes │
 │  Transactions,     │           │  schemas  (Pydantic)     │         │  index       │
 │  Fraude, Rapports… │           │  models   (SQLAlchemy)   │         │              │
@@ -121,7 +121,7 @@ testable et évolutif.
 | Migrations | **Alembic** | Versionnage du schéma de la base |
 | Sécurité | **JWT + bcrypt + RBAC** | Auth stateless, rôles vérifiés côté serveur |
 | Conteneurs | **Docker Compose** | Déploiement reproductible en une commande |
-| Tests / CI | **pytest + GitHub Actions** | 44 tests d'intégration, badge vert à chaque push |
+| Tests / CI | **pytest + GitHub Actions** | 80 tests d'intégration, badge vert à chaque push |
 
 ---
 

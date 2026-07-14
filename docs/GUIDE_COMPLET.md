@@ -120,7 +120,7 @@ NovaBank/
 │   │   ├── main.py         Point d'entrée : assemble l'application FastAPI
 │   │   ├── core/           Config, sécurité (JWT/bcrypt), dépendances (RBAC)
 │   │   ├── db/             Connexion à la base (Engine, Session, Base)
-│   │   ├── models/         Les 7 tables (classes SQLAlchemy)
+│   │   ├── models/         Les 8 tables (classes SQLAlchemy)
 │   │   ├── schemas/        Contrats d'entrée/sortie de l'API (Pydantic)
 │   │   ├── services/       La logique métier (7 services)
 │   │   ├── routers/        Les points d'entrée HTTP (10 routers)
