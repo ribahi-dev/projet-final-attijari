@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import require_role
 from app.db.session import get_db
 from app.models import Client, User
-from app.schemas.client import ClientCreate, ClientResponse, ClientUpdate
+from app.schemas.client import ClientCreate, ClientResponse, ClientUpdate, RiskProfileUpdate
 from app.services import audit_service
 
 router = APIRouter(prefix="/clients", tags=["Clients"])
@@ -17,6 +17,9 @@ router = APIRouter(prefix="/clients", tags=["Clients"])
 # Dépendance partagée : conseiller OU directeur (l'admin gère la plateforme,
 # pas la clientèle — séparation des responsabilités du CdC §6.1).
 Staff = Annotated[User, Depends(require_role("advisor", "director"))]
+# Le profil de risque (qui ASSOUPLIT la détection) est un acte de
+# gouvernance -> réservé au directeur.
+Director = Annotated[User, Depends(require_role("director"))]
 
 
 @router.post("", response_model=ClientResponse, status_code=status.HTTP_201_CREATED)
@@ -87,6 +90,44 @@ def update_client(
         db, "client_updated", user_id=staff.id, entity_type="client", entity_id=client.id,
         ip_address=request.client.host if request.client else None,
         details=f"champs modifiés : {', '.join(changes) or 'aucun'}",
+    )
+    db.commit()
+    db.refresh(client)
+    return client
+
+
+@router.patch("/{client_id}/risk-profile", response_model=ClientResponse)
+def update_risk_profile(
+    client_id: int, data: RiskProfileUpdate, request: Request,
+    db: Annotated[Session, Depends(get_db)], director: Director,
+):
+    """Calibre le scoring PAR CLIENT (profil de risque).
+
+    Le directeur peut neutraliser des signaux non pertinents pour ce client
+    (voyageur fréquent, grande fortune, compte professionnel). ⚠️ Cet acte
+    RÉDUIT la surveillance : il exige un motif et est systématiquement tracé
+    dans l'audit — c'est la parade à la fraude interne (un employé qui
+    « blanchirait » un compte complice laisse une trace indélébile)."""
+    client = db.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client introuvable")
+
+    client.frequent_traveler = data.frequent_traveler
+    client.high_net_worth = data.high_net_worth
+    client.business_account = data.business_account
+    client.risk_profile_note = data.note
+
+    actifs = [
+        libelle for actif, libelle in (
+            (data.frequent_traveler, "voyageur fréquent"),
+            (data.high_net_worth, "grande fortune"),
+            (data.business_account, "compte professionnel"),
+        ) if actif
+    ]
+    audit_service.log_action(
+        db, "client_risk_profile_changed", user_id=director.id, entity_type="client",
+        entity_id=client.id, ip_address=request.client.host if request.client else None,
+        details=f"profil: {', '.join(actifs) or 'aucun'} | motif: {data.note}",
     )
     db.commit()
     db.refresh(client)

@@ -91,6 +91,20 @@ class ClientUpdate(BaseModel):
     # exigerait une procédure KYC dédiée et auditée.
 
 
+class RiskProfileUpdate(BaseModel):
+    """Corps du PATCH /clients/{id}/risk-profile — calibrage du scoring.
+
+    Réservé au DIRECTEUR. Le `note` (motif) est OBLIGATOIRE et non vide :
+    assouplir un contrôle est un acte de gouvernance qui doit être justifié
+    et audité (défense contre la fraude interne).
+    """
+
+    frequent_traveler: bool = False
+    high_net_worth: bool = False
+    business_account: bool = False
+    note: str = Field(min_length=3, max_length=255)
+
+
 class ClientResponse(ClientBase):
     """Ce que l'API RENVOIE — la fiche complète, y compris les champs
     générés par le système (id, created_at) et l'état (is_active).
@@ -103,6 +117,11 @@ class ClientResponse(ClientBase):
     id: int
     is_active: bool
     created_at: datetime
+    # Profil de risque (calibrage du scoring par client).
+    frequent_traveler: bool = False
+    high_net_worth: bool = False
+    business_account: bool = False
+    risk_profile_note: str | None = None
 
     # from_attributes=True : autorise ClientResponse.model_validate(objet_orm)
     # — Pydantic lit alors les ATTRIBUTS (client.id, client.cin...) au lieu

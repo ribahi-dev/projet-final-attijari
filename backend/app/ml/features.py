@@ -20,14 +20,14 @@ Règle d'or : cette fonction est LA définition des features. L'entraînement
 les deux — jamais deux implémentations parallèles.
 """
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Account, Transaction
+from app.models import Account, Client, Transaction
 
 # Ordre CANONIQUE des features — celui des colonnes vues par le modèle.
 FEATURE_NAMES = [
@@ -169,3 +169,44 @@ def explain_features(f: TransactionFeatures) -> list[str]:
     elif f.days_since_last_tx >= 30:
         reasons.append(f"compte peu actif ({f.days_since_last_tx} jours d'inactivité)")
     return reasons
+
+
+def calibrate_for_client(f: TransactionFeatures, client: Client | None) -> tuple[TransactionFeatures, list[str]]:
+    """Calibre les features selon le PROFIL DE RISQUE du client.
+
+    Principe : on ne touche JAMAIS au modèle entraîné. On met simplement à
+    zéro, AVANT le scoring, les signaux qui n'ont pas de sens pour CE client
+    (décision KYC du directeur). Le signal neutralisé apparaît alors à 0 dans
+    le graphique SHAP — la calibration est transparente et explicable.
+
+    Renvoie le vecteur ajusté ET la liste des neutralisations (pour l'ajouter
+    à l'explication). Une neutralisation n'est signalée que si elle a
+    réellement supprimé un signal qui aurait été relevé (mêmes seuils que
+    `explain_features`), afin de ne pas encombrer l'explication.
+    """
+    if client is None:
+        return f, []
+    adj = replace(f)
+    notes: list[str] = []
+
+    # Voyageur fréquent : le changement de ville n'est pas suspect.
+    if getattr(client, "frequent_traveler", False):
+        if adj.city_changed:
+            notes.append("changement de ville neutralisé (client voyageur fréquent)")
+        adj.city_changed = 0
+
+    # Grande fortune : le revenu mensuel déclaré ne reflète pas sa capacité,
+    # les ratios montant/revenu et cumul 72h/revenu deviennent trompeurs.
+    if getattr(client, "high_net_worth", False):
+        if adj.amount_over_income >= 0.5 or adj.cumul_72h_over_income >= 1.5:
+            notes.append("ratios montant/revenu neutralisés (client grande fortune)")
+        adj.amount_over_income = 0.0
+        adj.cumul_72h_over_income = 0.0
+
+    # Compte professionnel : un gros volume d'opérations est normal.
+    if getattr(client, "business_account", False):
+        if adj.tx_last_24h >= 5:
+            notes.append("rafale d'opérations neutralisée (compte professionnel)")
+        adj.tx_last_24h = 0
+
+    return adj, notes

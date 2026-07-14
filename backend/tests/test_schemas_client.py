@@ -81,6 +81,11 @@ def test_response_reads_orm_object():
         cin="AB123456",
         is_active=True,
         created_at=datetime(2026, 7, 6, 12, 0, tzinfo=timezone.utc),
+        # Colonnes du profil de risque (posées à la main comme la base le
+        # ferait via leur server_default) pour la lecture from_attributes.
+        frequent_traveler=False,
+        high_net_worth=False,
+        business_account=False,
     )
 
     response = ClientResponse.model_validate(orm_client)  # grâce à from_attributes

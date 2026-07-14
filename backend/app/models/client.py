@@ -47,6 +47,21 @@ class Client(Base):
     profession: Mapped[str | None] = mapped_column(String(100))
     monthly_income: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
 
+    # PROFIL DE RISQUE (calibrage du scoring PAR CLIENT). Le directeur peut
+    # neutraliser certains signaux quand ils n'ont pas de sens pour CE client :
+    #   - frequent_traveler : un businessman qui se déplace -> le changement de
+    #     ville n'est pas suspect (neutralise city_changed) ;
+    #   - high_net_worth : une grande fortune -> le revenu mensuel déclaré ne
+    #     reflète pas sa capacité (neutralise les ratios montant/revenu) ;
+    #   - business_account : une entreprise -> un gros volume d'opérations est
+    #     normal (neutralise la rafale tx_24h).
+    # ⚠️ Assouplir un contrôle est EN SOI un risque (mécanisme classique de la
+    # fraude interne) : chaque changement exige un motif et est tracé à l'audit.
+    frequent_traveler: Mapped[bool] = mapped_column(Boolean, default=False)
+    high_net_worth: Mapped[bool] = mapped_column(Boolean, default=False)
+    business_account: Mapped[bool] = mapped_column(Boolean, default=False)
+    risk_profile_note: Mapped[str | None] = mapped_column(String(255))
+
     # Suppression logique : un client désactivé disparaît des écrans mais
     # reste en base (intégrité référentielle + audit réglementaire).
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

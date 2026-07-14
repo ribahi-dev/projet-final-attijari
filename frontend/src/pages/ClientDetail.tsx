@@ -1,5 +1,5 @@
 // Fiche client : profil, comptes (+ ouverture), historique scoré.
-import { UserX, Wallet } from "lucide-react";
+import { SlidersHorizontal, UserX, Wallet } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import api, { apiError } from "@/api/client";
@@ -24,6 +24,10 @@ export default function ClientDetail() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [newAccount, setNewAccount] = useState({ account_type: "current", initial_balance: "0" });
+  const isDirector = user?.role === "director";
+  const [profile, setProfile] = useState({
+    frequent_traveler: false, high_net_worth: false, business_account: false, note: "",
+  });
 
   const load = useCallback(async () => {
     const [c, a, t] = await Promise.all([
@@ -32,6 +36,12 @@ export default function ClientDetail() {
       api.get<Transaction[]>("/transactions", { params: { client_id: id, limit: 10 } }),
     ]);
     setClient(c.data);
+    setProfile({
+      frequent_traveler: c.data.frequent_traveler,
+      high_net_worth: c.data.high_net_worth,
+      business_account: c.data.business_account,
+      note: c.data.risk_profile_note ?? "",
+    });
     setAccounts(a.data);
     setTransactions(t.data);
   }, [id]);
@@ -57,6 +67,22 @@ export default function ClientDetail() {
     toast("info", "Client désactivé — historique conservé.");
     navigate("/clients");
   }
+
+  async function saveProfile() {
+    try {
+      await api.patch(`/clients/${id}/risk-profile`, profile);
+      toast("success", "Profil de risque enregistré — décision tracée dans l'audit.");
+      load();
+    } catch (err) {
+      toast("error", apiError(err));
+    }
+  }
+
+  const PROFILE_OPTIONS: { key: "frequent_traveler" | "high_net_worth" | "business_account"; label: string; desc: string }[] = [
+    { key: "frequent_traveler", label: "✈️ Voyageur fréquent", desc: "neutralise le changement de ville" },
+    { key: "high_net_worth", label: "💎 Grande fortune", desc: "neutralise les ratios montant / revenu" },
+    { key: "business_account", label: "🏢 Compte professionnel", desc: "neutralise la rafale d'opérations sur 24h" },
+  ];
 
   if (!client) return null;
 
@@ -129,6 +155,46 @@ export default function ClientDetail() {
           )}
         </Card>
       </div>
+
+      {isDirector && (
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <SlidersHorizontal size={16} className="text-primary" /> Profil de risque du client
+            </CardTitle>
+          </CardHeader>
+          <p className="mb-3 text-sm text-muted-foreground">
+            Neutralise les signaux non pertinents pour ce client (le score s'adapte à son profil KYC).
+            ⚠️ Assouplir la détection est un acte de gouvernance : un <strong>motif est obligatoire</strong> et
+            chaque changement est tracé dans le journal d'audit.
+          </p>
+          <div className="space-y-2.5">
+            {PROFILE_OPTIONS.map((o) => (
+              <label key={o.key} className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 cursor-pointer accent-[var(--primary)]"
+                  checked={profile[o.key]}
+                  onChange={(e) => setProfile({ ...profile, [o.key]: e.target.checked })}
+                />
+                <span className="text-sm">
+                  <strong>{o.label}</strong>{" "}
+                  <span className="text-muted-foreground">— {o.desc}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <Input
+            className="mt-3"
+            placeholder="Motif (obligatoire) — ex. client fortuné, revenu déclaré non représentatif"
+            value={profile.note}
+            onChange={(e) => setProfile({ ...profile, note: e.target.value })}
+          />
+          <Button className="mt-3" size="sm" onClick={saveProfile} disabled={profile.note.trim().length < 3}>
+            Enregistrer le profil
+          </Button>
+        </Card>
+      )}
 
       <Card className="mt-4">
         <CardHeader><CardTitle>Dernières opérations</CardTitle></CardHeader>

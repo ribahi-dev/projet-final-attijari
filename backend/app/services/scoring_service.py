@@ -19,7 +19,9 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.ml import model as ml_model
-from app.ml.features import TransactionFeatures, explain_features, extract_features
+from app.ml.features import (
+    TransactionFeatures, calibrate_for_client, explain_features, extract_features,
+)
 from app.models import Account, RiskScore, Transaction
 
 RULES_VERSION = "mvp-rules-v1"
@@ -66,6 +68,13 @@ def _rules_score(f: TransactionFeatures) -> int:
 
 def score_transaction(db: Session, account: Account, amount: Decimal, city: str | None) -> ScoringResult:
     features = extract_features(db, account, amount, city)
+
+    # CALIBRAGE PAR CLIENT : le directeur peut neutraliser certains signaux
+    # non pertinents pour ce client (voyageur fréquent, grande fortune...).
+    # On score sur les features AJUSTÉES -> le scoring et le SHAP reflètent
+    # exactement la décision de risque appliquée à ce client.
+    features, neutralized = calibrate_for_client(features, account.client)
+
     reasons = explain_features(features)
 
     shap_values = None
@@ -78,12 +87,17 @@ def score_transaction(db: Session, account: Account, amount: Decimal, city: str 
         score = _rules_score(features)
         version = RULES_VERSION
 
+    # La confiance ne dépend QUE des vrais signaux de risque (pas des
+    # neutralisations, qui ne sont pas des signaux).
     confidence = "élevé" if len(reasons) >= 2 else "moyen" if len(reasons) == 1 else "faible"
     explanation = (
         "Transaction sans signal de risque particulier."
         if not reasons
         else "Signaux détectés : " + " ; ".join(reasons) + "."
     )
+    # Mention transparente des signaux neutralisés par le profil du client.
+    if neutralized:
+        explanation += " Profil client : " + " ; ".join(neutralized) + "."
     return ScoringResult(
         score=score, confidence_level=confidence, explanation=explanation,
         model_version=version, shap_values=shap_values,
