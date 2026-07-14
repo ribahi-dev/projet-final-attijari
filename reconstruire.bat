@@ -24,18 +24,24 @@ if %errorlevel% neq 0 (
   exit /b 1
 )
 
-echo   Reconstruction (connexion internet requise)...
+echo   Reconstruction COMPLETE (--no-cache, connexion internet requise)...
+echo   A n'utiliser que si "demarrer.bat" affiche un comportement anormal.
 echo.
 REM Reseau propre + liberation des ports (cf. demarrer.bat) avant de rebatir.
 docker compose down --remove-orphans >nul 2>&1
 for /f %%c in ('docker ps -q --filter "publish=8090" --filter "publish=8000" --filter "publish=5433" 2^>nul') do docker stop %%c >nul 2>&1
-docker compose up -d --build
+REM --no-cache : on reconstruit TOUT de zero (re-telecharge les dependances)
+REM -> garantit une image parfaitement a jour, meme si le cache etait corrompu.
+docker compose build --no-cache
+if %errorlevel% neq 0 goto retry
+docker compose up -d
 if %errorlevel% equ 0 goto ok
 
+:retry
 echo.
-echo   [INFO] Echec (telechargement d'image interrompu ?). Nouvelle tentative...
+echo   [INFO] Echec (telechargement interrompu ?). Nouvelle tentative...
 timeout /t 8 /nobreak >nul
-docker compose up -d --build
+docker compose build --no-cache && docker compose up -d
 if %errorlevel% neq 0 (
   echo.
   echo   [ERREUR] La reconstruction a echoue -- souvent un probleme de connexion

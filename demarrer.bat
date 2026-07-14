@@ -53,20 +53,22 @@ for /f %%c in ('docker ps -q --filter "publish=8090" --filter "publish=8000" --f
 echo.
 echo   Demarrage des services...
 echo   1ere fois : construction (connexion internet requise, 2 a 5 min).
-echo   Ensuite   : demarrage instantane, meme SANS internet.
+echo   Ensuite   : demarrage rapide, meme SANS internet.
 echo.
-REM On n'utilise PAS --build : Docker construit les images si elles manquent,
-REM puis les REUTILISE (aucun acces reseau). C'est ce qui rend la demo fiable
-REM meme avec une connexion lente. Pour reconstruire apres une modif du code,
-REM utiliser "reconstruire.bat".
-docker compose up -d
+REM --build : on reconstruit TOUJOURS les images depuis le code present dans
+REM ce dossier -> on affiche exactement CETTE version (jamais une ancienne
+REM image en cache). Grace au cache de couches Docker, si les dependances
+REM (requirements.txt / package.json) n'ont pas change, les etapes pip/npm
+REM sont reutilisees sans reseau : le build reste rapide et hors-ligne une
+REM fois les images de base telechargees.
+docker compose up -d --build
 if %errorlevel% equ 0 goto services_ok
 
 echo.
 echo   [INFO] Echec (souvent un telechargement d'image de base interrompu).
 echo   Nouvelle tentative dans 8 secondes...
 timeout /t 8 /nobreak >nul
-docker compose up -d
+docker compose up -d --build
 if %errorlevel% neq 0 goto compose_failed
 
 :services_ok

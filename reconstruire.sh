@@ -19,18 +19,21 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "  Reconstruction (connexion internet requise)..."
+echo "  Reconstruction COMPLETE (--no-cache, connexion internet requise)..."
+echo "  A n'utiliser que si ./demarrer.sh affiche un comportement anormal."
 echo ""
 # Reseau propre + liberation des ports (cf. demarrer.sh) avant de rebatir.
 docker compose down --remove-orphans >/dev/null 2>&1 || true
 for c in $(docker ps -q --filter "publish=8090" --filter "publish=8000" --filter "publish=5433" 2>/dev/null); do
   docker stop "$c" >/dev/null 2>&1 || true
 done
-if ! docker compose up -d --build; then
+# --no-cache : on reconstruit TOUT de zero (re-telecharge les dependances) ->
+# garantit une image parfaitement a jour, meme si le cache etait corrompu.
+if ! (docker compose build --no-cache && docker compose up -d); then
   echo ""
-  echo "  [INFO] Echec (telechargement d'image interrompu ?). Nouvelle tentative..."
+  echo "  [INFO] Echec (telechargement interrompu ?). Nouvelle tentative..."
   sleep 8
-  if ! docker compose up -d --build; then
+  if ! (docker compose build --no-cache && docker compose up -d); then
     echo ""
     echo "  [ERREUR] La reconstruction a echoue -- souvent un probleme de connexion"
     echo "  pour telecharger les images de base. Verifie internet et relance."

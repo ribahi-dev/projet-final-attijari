@@ -38,19 +38,20 @@ for c in $(docker ps -q --filter "publish=8090" --filter "publish=8000" --filter
   docker stop "$c" >/dev/null 2>&1 || true
 done
 
-# On n'utilise PAS --build : Docker construit les images si elles manquent
-# (1ere fois, internet requis) puis les REUTILISE (aucun acces reseau) ->
-# demarrage fiable meme hors-ligne. Pour reconstruire apres une modif du
-# code, utiliser "./reconstruire.sh".
+# --build : on reconstruit TOUJOURS les images depuis le code de ce dossier
+# -> on affiche exactement CETTE version (jamais une ancienne image en cache).
+# Grace au cache de couches Docker, si les dependances n'ont pas change, les
+# etapes pip/npm sont reutilisees sans reseau : rapide et hors-ligne une fois
+# les images de base telechargees.
 echo "  Demarrage des services..."
 echo "  1ere fois : construction (internet requis, 2 a 5 min)."
-echo "  Ensuite   : demarrage instantane, meme sans internet."
+echo "  Ensuite   : demarrage rapide, meme sans internet."
 echo ""
-if ! docker compose up -d; then
+if ! docker compose up -d --build; then
   echo ""
   echo "  [INFO] Echec (telechargement d'image interrompu ?). Nouvelle tentative..."
   sleep 8
-  docker compose up -d
+  docker compose up -d --build
 fi
 
 echo ""
