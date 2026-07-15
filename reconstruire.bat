@@ -1,11 +1,16 @@
 @echo off
 REM ============================================================================
-REM  NovaBank - Reconstruire les images (Windows)
+REM  NovaBank - Reconstruire + REINITIALISER (Windows)
 REM
-REM  A utiliser UNIQUEMENT apres avoir modifie le code : force la reconstruction
-REM  des images Docker (necessite une connexion internet la 1ere fois pour
-REM  telecharger les images de base). Pour un simple demarrage, utiliser
-REM  "demarrer.bat" qui reutilise les images deja construites (hors-ligne).
+REM  A utiliser apres avoir MIS A JOUR LE CODE (nouveau ZIP / git pull) :
+REM   - reconstruit les images depuis le code present ;
+REM   - REINITIALISE la base de donnees (indispensable si le schema a change,
+REM     ex. nouvelles colonnes) puis re-injecte les donnees de demonstration.
+REM
+REM  ⚠️ La base est remise a zero (les donnees de demo sont recreees). C'est
+REM  sans risque : ce sont des donnees simulees.
+REM
+REM  Pour un simple demarrage sans reset, utiliser "demarrer.bat".
 REM ============================================================================
 cd /d "%~dp0"
 title NovaBank - Reconstruction
@@ -13,7 +18,7 @@ chcp 65001 >nul 2>&1
 
 echo.
 echo   ========================================
-echo      NovaBank - Reconstruction des images
+echo      NovaBank - Reconstruction + reset base
 echo   ========================================
 echo.
 
@@ -24,24 +29,25 @@ if %errorlevel% neq 0 (
   exit /b 1
 )
 
-echo   Reconstruction COMPLETE (--no-cache, connexion internet requise)...
-echo   A n'utiliser que si "demarrer.bat" affiche un comportement anormal.
+echo   Reinitialisation de la base + reconstruction depuis le code...
+echo   (les donnees de demo seront recreees automatiquement)
 echo.
-REM Reseau propre + liberation des ports (cf. demarrer.bat) avant de rebatir.
-docker compose down --remove-orphans >nul 2>&1
+REM down -v : supprime AUSSI le volume de la base -> au redemarrage, les tables
+REM sont recreees avec le schema A JOUR (corrige "colonne manquante" apres une
+REM mise a jour du code). --remove-orphans nettoie le reseau.
+docker compose down -v --remove-orphans >nul 2>&1
+REM Liberer les ports si une autre copie occupe encore 5433/8000/8090.
 for /f %%c in ('docker ps -q --filter "publish=8090" --filter "publish=8000" --filter "publish=5433" 2^>nul') do docker stop %%c >nul 2>&1
-REM --no-cache : on reconstruit TOUT de zero (re-telecharge les dependances)
-REM -> garantit une image parfaitement a jour, meme si le cache etait corrompu.
-docker compose build --no-cache
-if %errorlevel% neq 0 goto retry
-docker compose up -d
+
+REM up -d --build : reconstruit les images depuis le code (cache -> rapide et
+REM hors-ligne une fois les images de base telechargees).
+docker compose up -d --build
 if %errorlevel% equ 0 goto ok
 
-:retry
 echo.
-echo   [INFO] Echec (telechargement interrompu ?). Nouvelle tentative...
+echo   [INFO] Echec (telechargement d'image interrompu ?). Nouvelle tentative...
 timeout /t 8 /nobreak >nul
-docker compose build --no-cache && docker compose up -d
+docker compose up -d --build
 if %errorlevel% neq 0 (
   echo.
   echo   [ERREUR] La reconstruction a echoue -- souvent un probleme de connexion
@@ -53,8 +59,9 @@ if %errorlevel% neq 0 (
 
 :ok
 echo.
-echo   Images reconstruites et services redemarres.
+echo   Base reinitialisee et services redemarres.
 echo   Application : http://localhost:8090
 echo.
+start "" http://localhost:8090
 pause
 exit /b 0

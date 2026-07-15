@@ -36,8 +36,11 @@ tables et injecte les données de démonstration **automatiquement**.
 > réutilisées → démarrage en **quelques secondes, même hors-ligne**. Idéal pour une démo :
 > lance-le une fois chez toi avec internet, ensuite tout démarre en local le jour J.
 >
-> As-tu modifié le code ? Utilise **`reconstruire.bat`** (Windows) ou **`./reconstruire.sh`**
-> pour forcer la reconstruction des images.
+> **As-tu mis à jour le code** (nouveau ZIP / `git pull`) ? Utilise **`reconstruire.bat`**
+> (Windows) ou **`./reconstruire.sh`** : il reconstruit les images **et réinitialise la base**
+> (indispensable si le schéma a évolué, ex. nouvelles colonnes) puis recrée les données de démo.
+> Un simple `demarrer.bat` garde l'ancienne base — si tu vois « les clients ne s'affichent pas »
+> ou une erreur à la création après une mise à jour, lance **`reconstruire.bat`** une fois.
 
 Au bout de ~1 minute (2–5 min la première fois), l'application est prête :
 

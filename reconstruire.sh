@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  NovaBank - Reconstruire les images (macOS / Linux)
+#  NovaBank - Reconstruire + REINITIALISER (macOS / Linux)
 #
-#  A utiliser UNIQUEMENT apres avoir modifie le code : force la reconstruction
-#  des images Docker (internet requis la 1ere fois). Pour un simple demarrage,
-#  utiliser "./demarrer.sh" qui reutilise les images deja construites.
+#  A utiliser apres avoir MIS A JOUR LE CODE (nouveau ZIP / git pull) :
+#   - reconstruit les images depuis le code present ;
+#   - REINITIALISE la base (indispensable si le schema a change : nouvelles
+#     colonnes) puis re-injecte les donnees de demonstration.
+#
+#  La base est remise a zero (donnees simulees recreees). Pour un simple
+#  demarrage sans reset, utiliser "./demarrer.sh".
 # =============================================================================
 cd "$(dirname "$0")"
 
 echo ""
 echo "  ========================================"
-echo "     NovaBank - Reconstruction des images"
+echo "     NovaBank - Reconstruction + reset base"
 echo "  ========================================"
 echo ""
 
@@ -19,21 +23,21 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "  Reconstruction COMPLETE (--no-cache, connexion internet requise)..."
-echo "  A n'utiliser que si ./demarrer.sh affiche un comportement anormal."
+echo "  Reinitialisation de la base + reconstruction depuis le code..."
+echo "  (les donnees de demo seront recreees automatiquement)"
 echo ""
-# Reseau propre + liberation des ports (cf. demarrer.sh) avant de rebatir.
-docker compose down --remove-orphans >/dev/null 2>&1 || true
+# down -v : supprime AUSSI le volume de la base -> tables recreees avec le
+# schema A JOUR (corrige "colonne manquante" apres une mise a jour du code).
+docker compose down -v --remove-orphans >/dev/null 2>&1 || true
 for c in $(docker ps -q --filter "publish=8090" --filter "publish=8000" --filter "publish=5433" 2>/dev/null); do
   docker stop "$c" >/dev/null 2>&1 || true
 done
-# --no-cache : on reconstruit TOUT de zero (re-telecharge les dependances) ->
-# garantit une image parfaitement a jour, meme si le cache etait corrompu.
-if ! (docker compose build --no-cache && docker compose up -d); then
+# up -d --build : reconstruit depuis le code (cache -> rapide et hors-ligne).
+if ! docker compose up -d --build; then
   echo ""
-  echo "  [INFO] Echec (telechargement interrompu ?). Nouvelle tentative..."
+  echo "  [INFO] Echec (telechargement d'image interrompu ?). Nouvelle tentative..."
   sleep 8
-  if ! (docker compose build --no-cache && docker compose up -d); then
+  if ! docker compose up -d --build; then
     echo ""
     echo "  [ERREUR] La reconstruction a echoue -- souvent un probleme de connexion"
     echo "  pour telecharger les images de base. Verifie internet et relance."
@@ -42,6 +46,10 @@ if ! (docker compose build --no-cache && docker compose up -d); then
 fi
 
 echo ""
-echo "  Images reconstruites et services redemarres."
+echo "  Base reinitialisee et services redemarres."
 echo "  Application : http://localhost:8090"
 echo ""
+
+if command -v open >/dev/null 2>&1; then open http://localhost:8090
+elif command -v xdg-open >/dev/null 2>&1; then xdg-open http://localhost:8090
+fi
