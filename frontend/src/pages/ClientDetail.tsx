@@ -212,8 +212,21 @@ export default function ClientDetail() {
                 {profile.note && ` · motif : « ${profile.note} »`}
               </p>
               <div className="mt-2.5 flex gap-2">
-                <Button size="sm" onClick={() => decideProfile("approve")}>Approuver</Button>
-                <Button size="sm" variant="secondary" onClick={() => decideProfile("reject")}>Rejeter</Button>
+                <Button
+                  size="sm"
+                  className="h-11 flex-1 sm:h-8 sm:flex-none"
+                  onClick={() => decideProfile("approve")}
+                >
+                  Approuver
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="h-11 flex-1 sm:h-8 sm:flex-none"
+                  onClick={() => decideProfile("reject")}
+                >
+                  Rejeter
+                </Button>
               </div>
             </div>
           )}
@@ -248,11 +261,21 @@ export default function ClientDetail() {
             onChange={(e) => setProfile({ ...profile, note: e.target.value })}
           />
           {isDirector ? (
-            <Button className="mt-3" size="sm" onClick={setProfileDirect} disabled={profile.note.trim().length < 3}>
+            <Button
+              className="mt-3 h-11 w-full sm:h-9 sm:w-auto"
+              size="sm"
+              onClick={setProfileDirect}
+              disabled={profile.note.trim().length < 3}
+            >
               Enregistrer (actif immédiatement)
             </Button>
           ) : (
-            <Button className="mt-3" size="sm" onClick={requestProfile} disabled={profile.note.trim().length < 3}>
+            <Button
+              className="mt-3 h-11 w-full sm:h-9 sm:w-auto"
+              size="sm"
+              onClick={requestProfile}
+              disabled={profile.note.trim().length < 3}
+            >
               Envoyer la demande au directeur
             </Button>
           )}

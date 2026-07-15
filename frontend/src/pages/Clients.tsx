@@ -91,10 +91,9 @@ export default function Clients() {
                   <button
                     key={c.id}
                     onClick={() => navigate(`/clients/${c.id}`)}
-                    className="rounded-full border border-border bg-card px-3 py-1 text-xs font-medium hover:border-primary hover:text-primary"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-2 text-xs font-medium hover:border-primary hover:text-primary sm:py-1"
                   >
                     {c.first_name} {c.last_name}
-                    {" "}
                     <Badge tone="warning">à traiter</Badge>
                   </button>
                 ))}
