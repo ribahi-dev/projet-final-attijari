@@ -222,7 +222,8 @@ npm run dev                       # http://localhost:5173
 
 | Document | Contenu |
 |---|---|
-| **[docs/GUIDE_COMPLET.md](docs/GUIDE_COMPLET.md)** | ⭐ **Comprendre tout le projet** : chaque fichier, le module IA en détail, les améliorations métier (pourquoi + comment + où), 18 concepts clés, glossaire, questions du jury. **Commence ici.** |
+| **[docs/APPRENDRE_DE_ZERO.md](docs/APPRENDRE_DE_ZERO.md)** | ⭐ **Apprendre de zéro** : chaque notion, chaque langage, chaque mot informatique expliqué pour un débutant total, avec le POURQUOI de chaque décision + glossaire A→Z. **Pour tout comprendre et savoir refaire le projet soi-même.** |
+| **[docs/GUIDE_COMPLET.md](docs/GUIDE_COMPLET.md)** | ⭐ **Comprendre tout le projet** : chaque fichier, le module IA en détail, les améliorations métier (pourquoi + comment + où), 18 concepts clés, glossaire, questions du jury. |
 | **[docs/GUIDE_CONSTRUCTION.md](docs/GUIDE_CONSTRUCTION.md)** | ⭐ **Reconstruire le projet de zéro**, en 16 parties ordonnées (base → sécurité → services → IA → frontend → Docker → améliorations → mobile), avec les pièges vécus. |
 | [docs/evaluation_ml.md](docs/evaluation_ml.md) | Méthodologie et métriques du module IA (7 features, SHAP, feedback, leçons ML) |
 | [docs/notifications.md](docs/notifications.md) | Le système de notifications Telegram/email |
