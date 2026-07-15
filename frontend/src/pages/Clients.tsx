@@ -1,10 +1,11 @@
 // Clients : recherche (synchronisée avec la navbar), création en modale.
-import { Plus, Search } from "lucide-react";
+import { BellRing, Plus, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api, { apiError } from "@/api/client";
 import type { Client } from "@/api/types";
 import { PageHeader } from "@/components/layout/AppLayout";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
@@ -28,9 +29,11 @@ export default function Clients() {
   const search = params.get("search") ?? "";
 
   const [clients, setClients] = useState<Client[] | null>(null);
+  const [pending, setPending] = useState<Client[]>([]);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [error, setError] = useState("");
+  const isDirector = user?.role === "director";
 
   useEffect(() => {
     setClients(null);
@@ -38,6 +41,12 @@ export default function Clients() {
       .get<Client[]>("/clients", { params: search ? { search } : {} })
       .then(({ data }) => setClients(data));
   }, [search]);
+
+  // Directeur : demandes de profil de risque en attente d'approbation.
+  useEffect(() => {
+    if (!isDirector) return;
+    api.get<Client[]>("/clients/risk-requests").then(({ data }) => setPending(data));
+  }, [isDirector]);
 
   const set = (field: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm({ ...form, [field]: e.target.value });
@@ -68,6 +77,32 @@ export default function Clients() {
           )
         }
       />
+
+      {isDirector && pending.length > 0 && (
+        <Card className="mb-4 border-warning/40 bg-warning/8">
+          <div className="flex items-start gap-3">
+            <BellRing size={18} className="mt-0.5 shrink-0 text-warning" />
+            <div>
+              <p className="text-sm font-semibold">
+                {pending.length} demande(s) de profil de risque en attente d'approbation
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {pending.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => navigate(`/clients/${c.id}`)}
+                    className="rounded-full border border-border bg-card px-3 py-1 text-xs font-medium hover:border-primary hover:text-primary"
+                  >
+                    {c.first_name} {c.last_name}
+                    {" "}
+                    <Badge tone="warning">à traiter</Badge>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <Card>
         <div className="relative mb-4 max-w-sm">

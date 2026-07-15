@@ -24,11 +24,12 @@ export interface Client {
   monthly_income: string | null;
   is_active: boolean;
   created_at: string;
-  // Profil de risque (calibrage du scoring par client — directeur).
+  // Profil de risque (calibrage du scoring) + workflow d'approbation.
   frequent_traveler: boolean;
   high_net_worth: boolean;
   business_account: boolean;
   risk_profile_note: string | null;
+  risk_profile_status: "none" | "pending" | "active";
 }
 
 export interface Account {

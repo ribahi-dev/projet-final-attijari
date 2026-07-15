@@ -184,7 +184,10 @@ def calibrate_for_client(f: TransactionFeatures, client: Client | None) -> tuple
     réellement supprimé un signal qui aurait été relevé (mêmes seuils que
     `explain_features`), afin de ne pas encombrer l'explication.
     """
-    if client is None:
+    # La calibration ne s'applique QUE si le profil a été APPROUVÉ (workflow
+    # maker-checker) : un profil "pending" (proposé par un conseiller, pas
+    # encore validé par le directeur) n'a aucun effet sur le score.
+    if client is None or getattr(client, "risk_profile_status", "none") != "active":
         return f, []
     adj = replace(f)
     notes: list[str] = []

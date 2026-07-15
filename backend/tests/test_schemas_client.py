@@ -86,6 +86,7 @@ def test_response_reads_orm_object():
         frequent_traveler=False,
         high_net_worth=False,
         business_account=False,
+        risk_profile_status="none",
     )
 
     response = ClientResponse.model_validate(orm_client)  # grâce à from_attributes

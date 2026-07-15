@@ -117,11 +117,12 @@ class ClientResponse(ClientBase):
     id: int
     is_active: bool
     created_at: datetime
-    # Profil de risque (calibrage du scoring par client).
+    # Profil de risque (calibrage du scoring par client) + workflow d'approbation.
     frequent_traveler: bool = False
     high_net_worth: bool = False
     business_account: bool = False
     risk_profile_note: str | None = None
+    risk_profile_status: str = "none"  # none / pending / active
 
     # from_attributes=True : autorise ClientResponse.model_validate(objet_orm)
     # — Pydantic lit alors les ATTRIBUTS (client.id, client.cin...) au lieu

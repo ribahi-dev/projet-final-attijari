@@ -20,7 +20,7 @@ Choix techniques à retenir :
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, Numeric, String, func
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -61,6 +61,20 @@ class Client(Base):
     high_net_worth: Mapped[bool] = mapped_column(Boolean, default=False)
     business_account: Mapped[bool] = mapped_column(Boolean, default=False)
     risk_profile_note: Mapped[str | None] = mapped_column(String(255))
+
+    # WORKFLOW MAKER-CHECKER (séparation des tâches / principe des 4 yeux) :
+    # le CONSEILLER propose un profil, le DIRECTEUR l'approuve. Le calibrage
+    # du scoring ne s'applique QUE si le statut est "active" -> un conseiller
+    # ne peut jamais assouplir la détection seul (parade à la fraude interne).
+    #   none    : aucun profil
+    #   pending : proposé par un conseiller, en attente d'approbation
+    #   active  : approuvé (ou fixé directement par le directeur)
+    risk_profile_status: Mapped[str] = mapped_column(
+        Enum("none", "pending", "active", name="risk_profile_status"), default="none"
+    )
+    # Qui a proposé (conseiller) et qui a approuvé (directeur) — traçabilité.
+    risk_requested_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    risk_reviewed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
 
     # Suppression logique : un client désactivé disparaît des écrans mais
     # reste en base (intégrité référentielle + audit réglementaire).

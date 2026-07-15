@@ -66,6 +66,17 @@ def list_clients(
     return db.scalars(query.order_by(Client.id).offset(skip).limit(min(limit, 100))).all()
 
 
+@router.get("/risk-requests", response_model=list[ClientResponse])
+def list_risk_requests(db: Annotated[Session, Depends(get_db)], director: Director):
+    """Les demandes de profil de risque EN ATTENTE d'approbation (directeur).
+
+    Défini AVANT /{client_id} : sinon FastAPI interpréterait "risk-requests"
+    comme un identifiant de client (et renverrait 422)."""
+    return db.scalars(
+        select(Client).where(Client.risk_profile_status == "pending").order_by(Client.id)
+    ).all()
+
+
 @router.get("/{client_id}", response_model=ClientResponse)
 def get_client(client_id: int, db: Annotated[Session, Depends(get_db)], staff: Staff):
     client = db.get(Client, client_id)
@@ -96,18 +107,32 @@ def update_client(
     return client
 
 
-@router.patch("/{client_id}/risk-profile", response_model=ClientResponse)
-def update_risk_profile(
-    client_id: int, data: RiskProfileUpdate, request: Request,
-    db: Annotated[Session, Depends(get_db)], director: Director,
-):
-    """Calibre le scoring PAR CLIENT (profil de risque).
+def _profile_labels(client: Client) -> str:
+    """Libellés lisibles des options actives d'un client (pour l'audit)."""
+    actifs = [
+        libelle for actif, libelle in (
+            (client.frequent_traveler, "voyageur fréquent"),
+            (client.high_net_worth, "grande fortune"),
+            (client.business_account, "compte professionnel"),
+        ) if actif
+    ]
+    return ", ".join(actifs) or "aucun"
 
-    Le directeur peut neutraliser des signaux non pertinents pour ce client
-    (voyageur fréquent, grande fortune, compte professionnel). ⚠️ Cet acte
-    RÉDUIT la surveillance : il exige un motif et est systématiquement tracé
-    dans l'audit — c'est la parade à la fraude interne (un employé qui
-    « blanchirait » un compte complice laisse une trace indélébile)."""
+
+def _ip(request: Request) -> str | None:
+    return request.client.host if request.client else None
+
+
+@router.post("/{client_id}/risk-profile/request", response_model=ClientResponse)
+def request_risk_profile(
+    client_id: int, data: RiskProfileUpdate, request: Request,
+    db: Annotated[Session, Depends(get_db)], staff: Staff,
+):
+    """Le CONSEILLER (ou le directeur) PROPOSE un profil de risque.
+
+    Workflow maker-checker : la demande passe en « en attente » et n'affecte
+    PAS encore le scoring. Elle devra être approuvée par un directeur. Un
+    conseiller ne peut donc jamais assouplir la détection seul."""
     client = db.get(Client, client_id)
     if client is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client introuvable")
@@ -116,18 +141,101 @@ def update_risk_profile(
     client.high_net_worth = data.high_net_worth
     client.business_account = data.business_account
     client.risk_profile_note = data.note
+    client.risk_profile_status = "pending"
+    client.risk_requested_by_id = staff.id
+    client.risk_reviewed_by_id = None
 
-    actifs = [
-        libelle for actif, libelle in (
-            (data.frequent_traveler, "voyageur fréquent"),
-            (data.high_net_worth, "grande fortune"),
-            (data.business_account, "compte professionnel"),
-        ) if actif
-    ]
+    audit_service.log_action(
+        db, "risk_profile_requested", user_id=staff.id, entity_type="client",
+        entity_id=client.id, ip_address=_ip(request),
+        details=f"profil demandé: {_profile_labels(client)} | motif: {data.note}",
+    )
+    db.commit()
+    db.refresh(client)
+    return client
+
+
+@router.post("/{client_id}/risk-profile/approve", response_model=ClientResponse)
+def approve_risk_profile(
+    client_id: int, request: Request,
+    db: Annotated[Session, Depends(get_db)], director: Director,
+):
+    """Le DIRECTEUR APPROUVE une demande en attente -> le profil devient
+    ACTIF et le scoring en tient compte. Tracé à l'audit (maker-checker)."""
+    client = db.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client introuvable")
+    if client.risk_profile_status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Aucune demande de profil en attente"
+        )
+
+    client.risk_profile_status = "active"
+    client.risk_reviewed_by_id = director.id
+    audit_service.log_action(
+        db, "risk_profile_approved", user_id=director.id, entity_type="client",
+        entity_id=client.id, ip_address=_ip(request),
+        details=f"profil approuvé: {_profile_labels(client)} (demandé par #{client.risk_requested_by_id})",
+    )
+    db.commit()
+    db.refresh(client)
+    return client
+
+
+@router.post("/{client_id}/risk-profile/reject", response_model=ClientResponse)
+def reject_risk_profile(
+    client_id: int, request: Request,
+    db: Annotated[Session, Depends(get_db)], director: Director,
+):
+    """Le DIRECTEUR REJETTE une demande -> le profil reste sans effet."""
+    client = db.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client introuvable")
+    if client.risk_profile_status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Aucune demande de profil en attente"
+        )
+
+    audit_service.log_action(
+        db, "risk_profile_rejected", user_id=director.id, entity_type="client",
+        entity_id=client.id, ip_address=_ip(request),
+        details=f"profil rejeté: {_profile_labels(client)} (demandé par #{client.risk_requested_by_id})",
+    )
+    # La demande est annulée : on efface les options et on repasse à "aucun".
+    client.frequent_traveler = False
+    client.high_net_worth = False
+    client.business_account = False
+    client.risk_profile_status = "none"
+    client.risk_reviewed_by_id = director.id
+    db.commit()
+    db.refresh(client)
+    return client
+
+
+@router.patch("/{client_id}/risk-profile", response_model=ClientResponse)
+def set_risk_profile(
+    client_id: int, data: RiskProfileUpdate, request: Request,
+    db: Annotated[Session, Depends(get_db)], director: Director,
+):
+    """Le DIRECTEUR fixe DIRECTEMENT le profil (il est l'approbateur : pas
+    besoin de passer par une demande). Le profil est immédiatement ACTIF.
+    Tracé à l'audit."""
+    client = db.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client introuvable")
+
+    client.frequent_traveler = data.frequent_traveler
+    client.high_net_worth = data.high_net_worth
+    client.business_account = data.business_account
+    client.risk_profile_note = data.note
+    any_active = data.frequent_traveler or data.high_net_worth or data.business_account
+    client.risk_profile_status = "active" if any_active else "none"
+    client.risk_reviewed_by_id = director.id
+
     audit_service.log_action(
         db, "client_risk_profile_changed", user_id=director.id, entity_type="client",
-        entity_id=client.id, ip_address=request.client.host if request.client else None,
-        details=f"profil: {', '.join(actifs) or 'aucun'} | motif: {data.note}",
+        entity_id=client.id, ip_address=_ip(request),
+        details=f"profil (directeur): {_profile_labels(client)} | motif: {data.note}",
     )
     db.commit()
     db.refresh(client)

@@ -68,15 +68,46 @@ export default function ClientDetail() {
     navigate("/clients");
   }
 
-  async function saveProfile() {
+  // Conseiller : PROPOSE un profil (passe « en attente » d'approbation).
+  async function requestProfile() {
     try {
-      await api.patch(`/clients/${id}/risk-profile`, profile);
-      toast("success", "Profil de risque enregistré — décision tracée dans l'audit.");
+      await api.post(`/clients/${id}/risk-profile/request`, profile);
+      toast("success", "Demande envoyée — en attente d'approbation du directeur.");
       load();
     } catch (err) {
       toast("error", apiError(err));
     }
   }
+
+  // Directeur : fixe DIRECTEMENT le profil (immédiatement actif).
+  async function setProfileDirect() {
+    try {
+      await api.patch(`/clients/${id}/risk-profile`, profile);
+      toast("success", "Profil enregistré et actif — décision tracée dans l'audit.");
+      load();
+    } catch (err) {
+      toast("error", apiError(err));
+    }
+  }
+
+  // Directeur : approuve / rejette une demande en attente.
+  async function decideProfile(decision: "approve" | "reject") {
+    try {
+      await api.post(`/clients/${id}/risk-profile/${decision}`);
+      toast("success", decision === "approve"
+        ? "Profil approuvé — le scoring en tient compte."
+        : "Demande rejetée.");
+      load();
+    } catch (err) {
+      toast("error", apiError(err));
+    }
+  }
+
+  const STATUS_BADGE = {
+    none: { tone: "neutral" as const, label: "aucun profil" },
+    pending: { tone: "warning" as const, label: "en attente d'approbation" },
+    active: { tone: "success" as const, label: "profil actif" },
+  }[client?.risk_profile_status ?? "none"];
 
   const PROFILE_OPTIONS: { key: "frequent_traveler" | "high_net_worth" | "business_account"; label: string; desc: string }[] = [
     { key: "frequent_traveler", label: "✈️ Voyageur fréquent", desc: "neutralise le changement de ville" },
@@ -156,18 +187,44 @@ export default function ClientDetail() {
         </Card>
       </div>
 
-      {isDirector && (
+      {client.is_active && (user?.role === "advisor" || isDirector) && (
         <Card className="mt-4">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <SlidersHorizontal size={16} className="text-primary" /> Profil de risque du client
             </CardTitle>
+            <Badge tone={STATUS_BADGE.tone}>{STATUS_BADGE.label}</Badge>
           </CardHeader>
           <p className="mb-3 text-sm text-muted-foreground">
-            Neutralise les signaux non pertinents pour ce client (le score s'adapte à son profil KYC).
-            ⚠️ Assouplir la détection est un acte de gouvernance : un <strong>motif est obligatoire</strong> et
-            chaque changement est tracé dans le journal d'audit.
+            Neutralise les signaux non pertinents pour ce client (le score s'adapte à son profil KYC).{" "}
+            {isDirector
+              ? "Vous pouvez fixer directement le profil, ou approuver la demande d'un conseiller."
+              : "Vous PROPOSEZ un profil ; il ne s'applique qu'après approbation du directeur."}{" "}
+            ⚠️ Motif obligatoire, chaque décision est tracée dans l'audit.
           </p>
+
+          {/* Directeur : une demande en attente à trancher */}
+          {isDirector && client.risk_profile_status === "pending" && (
+            <div className="mb-4 rounded-lg border border-warning/40 bg-warning/10 p-3">
+              <p className="text-sm font-semibold">Demande en attente d'approbation</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Options : {PROFILE_OPTIONS.filter((o) => profile[o.key]).map((o) => o.label).join(", ") || "aucune"}
+                {profile.note && ` · motif : « ${profile.note} »`}
+              </p>
+              <div className="mt-2.5 flex gap-2">
+                <Button size="sm" onClick={() => decideProfile("approve")}>Approuver</Button>
+                <Button size="sm" variant="secondary" onClick={() => decideProfile("reject")}>Rejeter</Button>
+              </div>
+            </div>
+          )}
+
+          {/* Conseiller : rappel si une demande est déjà en attente */}
+          {!isDirector && client.risk_profile_status === "pending" && (
+            <p className="mb-3 rounded-lg bg-warning/10 p-2.5 text-sm text-warning">
+              ⏳ Une demande est en attente d'approbation du directeur.
+            </p>
+          )}
+
           <div className="space-y-2.5">
             {PROFILE_OPTIONS.map((o) => (
               <label key={o.key} className="flex items-start gap-3 cursor-pointer">
@@ -190,9 +247,15 @@ export default function ClientDetail() {
             value={profile.note}
             onChange={(e) => setProfile({ ...profile, note: e.target.value })}
           />
-          <Button className="mt-3" size="sm" onClick={saveProfile} disabled={profile.note.trim().length < 3}>
-            Enregistrer le profil
-          </Button>
+          {isDirector ? (
+            <Button className="mt-3" size="sm" onClick={setProfileDirect} disabled={profile.note.trim().length < 3}>
+              Enregistrer (actif immédiatement)
+            </Button>
+          ) : (
+            <Button className="mt-3" size="sm" onClick={requestProfile} disabled={profile.note.trim().length < 3}>
+              Envoyer la demande au directeur
+            </Button>
+          )}
         </Card>
       )}
 

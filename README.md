@@ -121,7 +121,7 @@ testable et évolutif.
 | Migrations | **Alembic** | Versionnage du schéma de la base |
 | Sécurité | **JWT + bcrypt + RBAC** | Auth stateless, rôles vérifiés côté serveur |
 | Conteneurs | **Docker Compose** | Déploiement reproductible en une commande |
-| Tests / CI | **pytest + GitHub Actions** | 88 tests d'intégration, badge vert à chaque push |
+| Tests / CI | **pytest + GitHub Actions** | 92 tests d'intégration, badge vert à chaque push |
 
 ---
 
@@ -162,12 +162,16 @@ testable et évolutif.
 - ⚙️ **Seuil d'alerte configurable** — le directeur ajuste la sensibilité de la
   détection depuis l'interface ; chaque changement est tracé dans l'audit
   (le `.env` ne fournit plus que la valeur par défaut).
-- 🎚️ **Profil de risque par client** — le directeur calibre le scoring pour un client
-  donné en neutralisant les signaux non pertinents (✈️ voyageur fréquent → ignore le
-  changement de ville, 💎 grande fortune → ignore les ratios montant/revenu, 🏢 compte
-  professionnel → ignore la rafale d'opérations). Le modèle n'est pas modifié : la
-  feature passe à 0 (visible dans SHAP). **Gouvernance** : réservé au directeur, motif
-  obligatoire, chaque changement audité (parade à la fraude interne).
+- 🎚️ **Profil de risque par client** — calibre le scoring pour un client donné en
+  neutralisant les signaux non pertinents (✈️ voyageur fréquent → ignore le changement
+  de ville, 💎 grande fortune → ignore les ratios montant/revenu, 🏢 compte professionnel
+  → ignore la rafale d'opérations). Le modèle n'est pas modifié : la feature passe à 0
+  (visible dans SHAP).
+- ✅ **Workflow d'approbation (maker-checker)** — séparation des tâches : le **conseiller
+  PROPOSE** un profil (à la création ou sur la fiche), le **directeur APPROUVE ou REJETTE**.
+  Tant qu'elle n'est pas approuvée, la demande n'affecte pas le score. Un conseiller ne
+  peut donc jamais assouplir la détection seul (parade à la fraude interne) ; motif
+  obligatoire et chaque étape (demande, approbation, rejet) tracée dans l'audit.
 - 📊 **Tableau de bord** — KPI et graphiques Plotly (activité, répartition, risque).
 - 📄 **Rapports** — export des données (CSV/Excel).
 - 📜 **Audit** — journal append-only de toutes les actions sensibles (qui, quoi, quand, IP).
